@@ -1,0 +1,11 @@
+[
+  {
+    "session_id": "foi_proto1_arc_left_push_000",
+    "session_name": "proto1_arc_left_push",
+    "robot_name": "recomoProto1",
+    "frame_id": "map",
+    "category": "sample",
+    "foi_count": 25,
+    "file": "foi_proto1_arc_left_push_000.json"
+  }
+]

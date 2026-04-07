@@ -1,0 +1,214 @@
+package com.recomo.common.video
+
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.util.Log
+import android.view.Surface
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.nio.ByteBuffer
+
+private const val TAG = "VideoDecoder"
+
+/**
+ * H.264/H.265 video decoder using Android MediaCodec.
+ * Decodes NAL units in Annex-B format and renders to a Surface.
+ * 
+ * Thread-safe: uses mutex to serialize access to MediaCodec
+ */
+class VideoDecoder {
+    private var decoder: MediaCodec? = null
+    private var frameCount = 0
+    
+    // Mutex to serialize access to MediaCodec (not thread-safe)
+    private val decoderMutex = Mutex()
+    
+    /**
+     * Initialize decoder with codec type and output surface
+     * @param codecType "video/avc" for H.264 or "video/hevc" for H.265
+     * @param width Video width
+     * @param height Video height
+     * @param surface Output surface for rendering
+     */
+    suspend fun initialize(
+        codecType: String = MediaFormat.MIMETYPE_VIDEO_HEVC, // H.265 default
+        width: Int = 1920,
+        height: Int = 1080,
+        surface: Surface?
+    ) = decoderMutex.withLock {
+        withContext(Dispatchers.Default) {
+            releaseLocked()
+            
+            Log.i(TAG, "Initializing MediaCodec: $codecType ${width}x${height}, surface: ${surface != null}")
+            
+            try {
+                decoder = MediaCodec.createDecoderByType(codecType).apply {
+                    val format = MediaFormat.createVideoFormat(codecType, width, height).apply {
+                        // Request low latency decoding
+                        setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                        // Ensure input buffers are large enough for big keyframes.
+                        setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, width * height * 3 / 2)
+                        
+                        // Use surface rendering (hardware acceleration)
+                        if (surface != null) {
+                            setInteger(
+                                MediaFormat.KEY_COLOR_FORMAT,
+                                MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+                            )
+                        }
+                    }
+                    
+                    configure(format, surface, null, 0)
+                    start()
+                }
+                
+                frameCount = 0
+                Log.i(TAG, "MediaCodec started successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize MediaCodec", e)
+                decoder = null
+                throw e
+            }
+        }
+    }
+    
+    /**
+     * Decode a video frame (NAL units in Annex-B format)
+     * @param data Frame data containing one or more NAL units with start codes
+     * @param timestampUs Presentation timestamp in microseconds
+     * @return true if frame was successfully queued for decoding
+     */
+    suspend fun decodeFrame(data: ByteArray, timestampUs: Long): Boolean = decoderMutex.withLock {
+        withContext(Dispatchers.Default) {
+            val codec = decoder
+            if (codec == null) {
+                Log.w(TAG, "decodeFrame called but decoder is null")
+                return@withContext false
+            }
+            
+            try {
+                // CRITICAL: Release output buffers BEFORE queuing input to prevent queue full
+                releaseOutputBuffers(codec)
+                
+                // Get input buffer
+                val inputBufferIndex = codec.dequeueInputBuffer(10_000) // 10ms timeout
+
+                if (inputBufferIndex >= 0) {
+                    val inputBuffer = codec.getInputBuffer(inputBufferIndex)
+                    inputBuffer?.let { buffer ->
+                        buffer.clear()
+                        if (data.size > buffer.capacity()) {
+                            Log.w(TAG, "Frame too large for input buffer: size=${data.size} capacity=${buffer.capacity()}")
+                            codec.queueInputBuffer(
+                                inputBufferIndex,
+                                0,
+                                0,
+                                timestampUs,
+                                0
+                            )
+                            return@withContext false
+                        }
+                        buffer.put(data)
+
+                        codec.queueInputBuffer(
+                            inputBufferIndex,
+                            0,
+                            data.size,
+                            timestampUs,
+                            0
+                        )
+                        
+                        frameCount++
+                        
+                        // Log first 10 frames, then every 30 frames
+                        if (frameCount <= 10 || frameCount % 30 == 0) {
+                            Log.i(TAG, "📹 Queued frame $frameCount: ${data.size} bytes")
+                        }
+                    }
+                    
+                    return@withContext true
+                } else {
+                    if (frameCount <= 10) {
+                        Log.w(TAG, "No input buffer available (timeout)")
+                    }
+                }
+                
+                return@withContext false
+            } catch (e: Exception) {
+                Log.e(TAG, "Error decoding frame", e)
+                return@withContext false
+            }
+        }
+    }
+    
+    /**
+     * Release any available output buffers
+     */
+    private fun releaseOutputBuffers(codec: MediaCodec) {
+        val info = MediaCodec.BufferInfo()
+        var outputCount = 0
+        
+        // Process all available output buffers
+        var outputBufferIndex = codec.dequeueOutputBuffer(info, 0)
+        while (outputBufferIndex >= 0) {
+            // Release buffer to render to surface
+            codec.releaseOutputBuffer(outputBufferIndex, true)
+            outputCount++
+            
+            outputBufferIndex = codec.dequeueOutputBuffer(info, 0)
+        }
+        
+        // Log output rendering for first frames and periodically
+        if (outputCount > 0 && (frameCount <= 10 || frameCount % 30 == 0)) {
+            Log.i(TAG, "🖼️ Rendered $outputCount output buffers to surface (frame $frameCount)")
+        }
+        
+        // Handle format changes
+        if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+            val newFormat = codec.outputFormat
+            Log.i(TAG, "Output format changed: $newFormat")
+        }
+    }
+    
+    /**
+     * Flush decoder buffers (call when seeking or resetting)
+     */
+    suspend fun flush() = decoderMutex.withLock {
+        withContext(Dispatchers.Default) {
+            try {
+                decoder?.flush()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+    
+    /**
+     * Release decoder resources
+     */
+    suspend fun release() = decoderMutex.withLock {
+        withContext(Dispatchers.Default) {
+            releaseLocked()
+        }
+    }
+    
+    /**
+     * Get total decoded frame count
+     */
+    fun getFrameCount(): Int = frameCount
+
+    private fun releaseLocked() {
+        try {
+            decoder?.stop()
+            decoder?.release()
+        } catch (e: Exception) {
+            // Ignore
+        } finally {
+            decoder = null
+            frameCount = 0
+        }
+    }
+}

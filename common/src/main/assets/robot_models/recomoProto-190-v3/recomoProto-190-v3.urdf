@@ -1,0 +1,269 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="recomoProto-190-v3">
+  <!--Derived from nrdf-1 with proto1 arm/gimbal limits and virtual base joints.-->
+  <link name="base_root" />
+  <link name="base_vx_link" />
+  <link name="base_vy_link" />
+  <link name="base_wz_link" />
+  <joint name="base_joint_vx" type="prismatic">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="base_root" />
+    <child link="base_vx_link" />
+    <axis xyz="1 0 0" />
+    <limit lower="-50" upper="50" effort="200" velocity="2" />
+  </joint>
+  <joint name="base_joint_vy" type="prismatic">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="base_vx_link" />
+    <child link="base_vy_link" />
+    <axis xyz="0 1 0" />
+    <limit lower="-50" upper="50" effort="200" velocity="2" />
+  </joint>
+  <joint name="base_joint_wz" type="continuous">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="base_vy_link" />
+    <child link="base_wz_link" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="base_link_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="base_wz_link" />
+    <child link="base_link" />
+  </joint>
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0.0055306 0.01516 0.31098" rpy="0 0 0" />
+      <mass value="20" />
+      <inertia ixx="0.14156" ixy="8.5694E-05" ixz="0.00013554" iyy="0.14292" iyz="-1.7477E-06" izz="0.19802" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/base_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="arm_link_1">
+    <inertial>
+      <origin xyz="-0.00026643 0.010608 0.061484" rpy="0 0 0" />
+      <mass value="0.91" />
+      <inertia ixx="0.00074254" ixy="4.0674E-06" ixz="-1.7031E-06" iyy="0.00068177" iyz="-7.0581E-05" izz="0.0006316" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_1.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.29804 0.29804 0.29804 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint6_arm_yaw" type="revolute">
+    <origin xyz="0 0.01 0.7938" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="arm_link_1" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.1416" upper="3.1416" effort="30.0" velocity="0.5" />
+  </joint>
+  <link name="arm_link_2">
+    <inertial>
+      <origin xyz="2.1296E-08 0.19888 0.037849" rpy="0 0 0" />
+      <mass value="0.61" />
+      <inertia ixx="0.0030664" ixy="6.4503E-08" ixz="-5.9336E-11" iyy="0.00035245" iyz="-1.2481E-10" izz="0.0031489" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_2.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.29804 0.29804 0.29804 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint5_arm_pitch" type="revolute">
+    <origin xyz="0 -0.028 0.07788" rpy="1.5708 0 0" />
+    <parent link="arm_link_1" />
+    <child link="arm_link_2" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.3562" upper="2.3562" effort="30.0" velocity="0.5" />
+  </joint>
+  <link name="arm_link_3">
+    <inertial>
+      <origin xyz="-0.0050084 -0.21521 0.034746" rpy="0 0 0" />
+      <mass value="1.27" />
+      <inertia ixx="0.0016994" ixy="3.3526E-07" ixz="3.4668E-06" iyy="0.00057537" iyz="4.4555E-06" izz="0.001688" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_3.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.29804 0.29804 0.29804 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint4_elbow_pitch" type="revolute">
+    <origin xyz="0 0.4 0" rpy="3.1416 0 0" />
+    <parent link="arm_link_2" />
+    <child link="arm_link_3" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.3562" upper="2.3562" effort="30.0" velocity="0.5" />
+  </joint>
+  <link name="arm_link_4">
+    <inertial>
+      <origin xyz="-0.070164 1.0488E-16 0.042022" rpy="0 0 0" />
+      <mass value="0.45" />
+      <inertia ixx="0.00013075" ixy="-9.755E-20" ixz="0.00017126" iyy="0.00044213" iyz="-3.2713E-20" izz="0.00034462" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_4.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint3_gimbal_yaw" type="revolute">
+    <origin xyz="0 -0.47088 0.028" rpy="1.5708 0 0" />
+    <parent link="arm_link_3" />
+    <child link="arm_link_4" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.1416" upper="3.1416" effort="10.0" velocity="0.5" />
+  </joint>
+  <link name="arm_link_5">
+    <inertial>
+      <origin xyz="-0.0017203 -0.063107 0.072647" rpy="0 0 0" />
+      <mass value="0.45" />
+      <inertia ixx="0.0006156" ixy="-6.2991E-06" ixz="1.0648E-05" iyy="0.0004255" iyz="0.00023199" izz="0.00022502" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_5.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_5.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint2_gimbal_roll" type="revolute">
+    <origin xyz="-0.099888 0 0.077538" rpy="0 0.94248 0" />
+    <parent link="arm_link_4" />
+    <child link="arm_link_5" />
+    <axis xyz="0 0 1" />
+    <limit lower="-4.1015" upper="1.5708" effort="10.0" velocity="0.5" />
+  </joint>
+  <link name="arm_link_6">
+    <inertial>
+      <origin xyz="-0.0050729 0.033014 0.045516" rpy="0 0 0" />
+      <mass value="0.24" />
+      <inertia ixx="0.0002457" ixy="9.9849E-06" ixz="1.7169E-05" iyy="0.0001741" iyz="-7.7172E-05" izz="0.0001101" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_6.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/arm_link_6.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint1_gimbal_pitch" type="revolute">
+    <origin xyz="-0.0031465 -0.075 0.12575" rpy="-1.5708 -0.94248 0" />
+    <parent link="arm_link_5" />
+    <child link="arm_link_6" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.6652" upper="1.9199" effort="10.0" velocity="0.5" />
+  </joint>
+  <link name="cam_link">
+    <inertial>
+      <origin xyz="-0.0092646 -4.9407E-05 0.0061835" rpy="0 0 0" />
+      <mass value="1.7" />
+      <inertia ixx="0.0003447" ixy="-6.5753E-06" ixz="2.4463E-05" iyy="0.00056714" iyz="1.3806E-06" izz="0.00070106" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/cam_link.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.29804 0.29804 0.29804 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://recomoProto-190-v3/meshes/cam_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="camera_optical_center" type="fixed">
+    <origin xyz="0 0.0065609 0.10147" rpy="0 1.5708 0" />
+    <parent link="arm_link_6" />
+    <child link="cam_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="ee_tool">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia ixx="2.3333E-07" ixy="0" ixz="0" iyy="2.3333E-07" iyz="0" izz="5.0E-08" />
+    </inertial>
+  </link>
+  <joint name="ee_tool_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="cam_link" />
+    <child link="ee_tool" />
+  </joint>
+</robot>

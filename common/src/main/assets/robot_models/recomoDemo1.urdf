@@ -1,0 +1,766 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="recomoDemo1">
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0.0015222 -0.0014495 0.20619"
+        rpy="0 0 0" />
+      <mass
+        value="2.4904" />
+      <inertia
+        ixx="0.012695"
+        ixy="3.4505E-06"
+        ixz="-1.4453E-05"
+        iyy="0.012158"
+        iyz="-3.5641E-07"
+        izz="0.017417" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+        filename="package://recomoDemo1/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="base_root" />
+  <link
+    name="base_wz_link" />
+  <link
+    name="base_vx_link" />
+  <link
+    name="base_vy_link" />
+  <link
+    name="seg1_arm">
+    <inertial>
+      <origin
+        xyz="-4.3267E-09 -0.0024859 0.056732"
+        rpy="0 0 0" />
+      <mass
+        value="0.2629" />
+      <inertia
+        ixx="0.00034224"
+        ixy="3.722E-11"
+        ixz="-2.8688E-11"
+        iyy="0.00031439"
+        iyz="3.1305E-06"
+        izz="0.00012571" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg1_arm.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.6 0.6 0.6 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg1_arm.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="base_joint_wz"
+    type="continuous">
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_vy_link" />
+    <child
+      link="base_wz_link" />
+    <axis
+      xyz="0 0 1" />
+  </joint>
+  <joint
+    name="base_joint_vx"
+    type="prismatic">
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_root" />
+    <child
+      link="base_vx_link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-50"
+      upper="50"
+      effort="200"
+      velocity="2" />
+  </joint>
+  <joint
+    name="base_joint_vy"
+    type="prismatic">
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_vx_link" />
+    <child
+      link="base_vy_link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-50"
+      upper="50"
+      effort="200"
+      velocity="2" />
+  </joint>
+  <joint
+    name="base_link_fixed"
+    type="fixed">
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_wz_link" />
+    <child
+      link="base_link" />
+  </joint>
+  <joint
+    name="joint6_arm_yaw"
+    type="revolute">
+    <origin
+      xyz="-0.0069938 -0.00039515 0.69504"
+      rpy="0 0 3.141592653589793" />
+    <parent
+      link="base_link" />
+    <child
+      link="seg1_arm" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-2.6"
+      upper="2.6"
+      effort="2"
+      velocity="0.5" />
+  </joint>
+  <link
+    name="seg2_arm">
+    <inertial>
+      <origin
+        xyz="0.00132163053670434 -0.000383977197197752 0.245827178923758"
+        rpy="0 0 0" />
+      <mass
+        value="0.334193580647335" />
+      <inertia
+        ixx="0.00186215112710019"
+        ixy="-1.34509157282982E-07"
+        ixz="4.41525091481291E-08"
+        iyy="0.00182727496223977"
+        iyz="-4.3142493087181E-06"
+        izz="0.000143809845588911" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg2_arm.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.6 0.6 0.6 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg2_arm.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint5_arm_pitch"
+    type="revolute">
+    <origin
+      xyz="0 0 0.091499"
+      rpy="0 0 0" />
+    <parent
+      link="seg1_arm" />
+    <child
+      link="seg2_arm" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-0.785"
+      upper="1.57"
+      effort="1"
+      velocity="0.5" />
+  </joint>
+  <link
+    name="seg2_arm_elbow">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="0.001" />
+      <inertia
+        ixx="1.0E-06"
+        ixy="0"
+        ixz="0"
+        iyy="1.0E-06"
+        iyz="0"
+        izz="1.0E-06" />
+    </inertial>
+  </link>
+  <joint
+    name="joint4_elbow_pitch"
+    type="revolute">
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="seg2_arm" />
+    <child
+      link="seg2_arm_elbow" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="0"
+      upper="0"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="seg3_gimbal_1">
+    <inertial>
+      <origin
+        xyz="-0.000148546183017182 0.0998664487515407 0.069618613672439"
+        rpy="0 0 0" />
+      <mass
+        value="0.071400573280976" />
+      <inertia
+        ixx="0.000216545615645692"
+        ixy="3.16532541760152E-07"
+        ixz="1.76877204069005E-07"
+        iyy="8.6517702293698E-05"
+        iyz="-6.97410106585101E-05"
+        izz="0.000139364995146239" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg3_gimbal_1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.52156862745098 0.627450980392157 0.686274509803922 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg3_gimbal_1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint3_gimbal_yaw"
+    type="continuous">
+    <origin
+      xyz="0 4.7769E-05 0.56597"
+      rpy="0 0 3.141592653589793" />
+    <parent
+      link="seg2_arm_elbow" />
+    <child
+      link="seg3_gimbal_1" />
+    <axis
+      xyz="0 0 -1" />
+  </joint>
+  <link
+    name="seg4_gimbal_2">
+    <inertial>
+      <origin
+        xyz="-0.0309244562842474 -0.000157768958386706 0.0500926025634036"
+        rpy="0 0 0" />
+      <mass
+        value="0.0408890569126298" />
+      <inertia
+        ixx="6.8139516546948E-05"
+        ixy="-4.0754145671686E-08"
+        ixz="1.16231854139331E-05"
+        iyy="7.26083392580266E-05"
+        iyz="1.54015027590778E-07"
+        izz="1.01333706504698E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg4_gimbal_2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.52156862745098 0.627450980392157 0.686274509803922 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg4_gimbal_2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint2_gimbal_pitch"
+    type="continuous">
+    <origin
+      xyz="0 0.12 0.14"
+      rpy="1.5708 0 0" />
+    <parent
+      link="seg3_gimbal_1" />
+    <child
+      link="seg4_gimbal_2" />
+    <axis
+      xyz="0 0 1" />
+  </joint>
+  <link
+    name="seg5_gimbal_3">
+    <inertial>
+      <origin
+        xyz="0.00784020266332371 -0.0158273965833821 -1.10686490750744E-05"
+        rpy="0 0 0" />
+      <mass
+        value="0.0583330869438475" />
+      <inertia
+        ixx="3.21370338340066E-05"
+        ixy="1.05913275759636E-10"
+        ixz="1.558959667579E-08"
+        iyy="1.1272381982529E-05"
+        iyz="3.29558182488445E-10"
+        izz="3.01545163211152E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg5_gimbal_3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.258823529411765 0.482352941176471 0.541176470588235 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/seg5_gimbal_3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint1_gimbal_roll"
+    type="continuous">
+    <origin
+      xyz="0 0 0.12"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="seg4_gimbal_2" />
+    <child
+      link="seg5_gimbal_3" />
+    <axis
+      xyz="1 0 0" />
+  </joint>
+  <link
+    name="ee_tool">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="0.001" />
+      <inertia
+        ixx="2.3333E-07"
+        ixy="0"
+        ixz="0"
+        iyy="2.3333E-07"
+        iyz="0"
+        izz="5.0E-08" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 -0.005"
+        rpy="0 0 0" />
+      <geometry>
+        <box
+          size="0.12 0.05 0.01" />
+      </geometry>
+      <material
+        name="dummy_end_mat">
+        <color
+          rgba="0.6 0.6 0.6 1" />
+      </material>
+    </visual>
+    <visual>
+      <origin
+        xyz="0 0 -0.03"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/ee_tool_cone.STL" />
+      </geometry>
+      <material
+        name="ee_tool_cone_mat">
+        <color
+          rgba="0.6 0.7 0.9 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 -0.005"
+        rpy="0 0 0" />
+      <geometry>
+        <box
+          size="0.12 0.05 0.01" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin
+        xyz="0 0 -0.03"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/ee_tool_cone.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="ee_tool"
+    type="fixed">
+    <origin
+      xyz="0.005 0 0.005"
+      rpy="0 -1.5708 0" />
+    <parent
+      link="seg5_gimbal_3" />
+    <child
+      link="ee_tool" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_cam_FR">
+    <inertial>
+      <origin
+        xyz="-3.6403E-06 0.00012608 -0.020875"
+        rpy="0 0 0" />
+      <mass
+        value="0.015627" />
+      <inertia
+        ixx="1.8812E-06"
+        ixy="5.6752E-09"
+        ixz="-6.5794E-10"
+        iyy="1.874E-06"
+        iyz="3.3409E-08"
+        izz="1.3321E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_FR.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_FR.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_cam_FR"
+    type="fixed">
+    <origin
+      xyz="0.094291 -0.035992 0.65854"
+      rpy="1.5708 0 1.5708" />
+    <parent
+      link="base_link" />
+    <child
+      link="link_cam_FR" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_cam_FL">
+    <inertial>
+      <origin
+        xyz="-3.6403E-06 0.00012608 -0.020875"
+        rpy="0 0 0" />
+      <mass
+        value="0.015627" />
+      <inertia
+        ixx="1.8812E-06"
+        ixy="5.6752E-09"
+        ixz="-6.5794E-10"
+        iyy="1.874E-06"
+        iyz="3.3409E-08"
+        izz="1.3321E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_FL.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_FL.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_cam_FL"
+    type="fixed">
+    <origin
+      xyz="0.094291 0.036008 0.65854"
+      rpy="1.5708 0 1.5708" />
+    <parent
+      link="base_link" />
+    <child
+      link="link_cam_FL" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_cam_L">
+    <inertial>
+      <origin
+        xyz="-3.6174E-06 0.0001261 -0.020875"
+        rpy="0 0 0" />
+      <mass
+        value="0.015627" />
+      <inertia
+        ixx="1.8812E-06"
+        ixy="5.6703E-09"
+        ixz="-6.5447E-10"
+        iyy="1.874E-06"
+        iyz="3.3413E-08"
+        izz="1.3321E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_L.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_L.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_cam_L"
+    type="fixed">
+    <origin
+      xyz="0 0.10097 0.65854"
+      rpy="1.5708 0 3.1416" />
+    <parent
+      link="base_link" />
+    <child
+      link="link_cam_L" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_cam_BK">
+    <inertial>
+      <origin
+        xyz="-3.6403E-06 0.00012608 -0.020875"
+        rpy="0 0 0" />
+      <mass
+        value="0.015627" />
+      <inertia
+        ixx="1.8812E-06"
+        ixy="5.6754E-09"
+        ixz="-6.5795E-10"
+        iyy="1.874E-06"
+        iyz="3.3409E-08"
+        izz="1.3321E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_BK.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_BK.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_cam_BK"
+    type="fixed">
+    <origin
+      xyz="-0.10097 0 0.65854"
+      rpy="1.5708 0 -1.5708" />
+    <parent
+      link="base_link" />
+    <child
+      link="link_cam_BK" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="link_cam_R">
+    <inertial>
+      <origin
+        xyz="-3.6174E-06 0.0001261 -0.020875"
+        rpy="0 0 0" />
+      <mass
+        value="0.015627" />
+      <inertia
+        ixx="1.8812E-06"
+        ixy="5.6703E-09"
+        ixz="-6.5447E-10"
+        iyy="1.874E-06"
+        iyz="3.3413E-08"
+        izz="1.3321E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_R.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://recomoDemo1/meshes/link_cam_R.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_cam_R"
+    type="fixed">
+    <origin
+      xyz="0 -0.10097 0.65854"
+      rpy="1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="link_cam_R" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+</robot>
