@@ -1,4 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- phone-moco capture: built-in device camera + high-rate IMU + local session files -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!-- ARCore is optional: phone-moco records video+IMU regardless; ARCore pose attached when available -->
+    <uses-feature
+        android:name="android.hardware.camera.ar"
+        android:required="false" />
+
+    <application>
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="optional" />
+    </application>
 </manifest>

@@ -20,7 +20,8 @@ import com.recomo.remotecontrol.camviewer.network.CamControlWebSocketClient
 import com.recomo.remotecontrol.camviewer.network.OrinTargetClient
 import com.recomo.remotecontrol.camviewer.network.PhoneCameraClient
 import com.recomo.remotecontrol.camviewer.network.TrackingFeedbackClient
-import com.recomo.remotecontrol.camviewer.network.WebRTCReceiver
+import com.recomo.common.model.ConnectionState as CommonConnectionState
+import com.recomo.common.network.WebRTCReceiver
 import com.recomo.remotecontrol.camviewer.video.VideoDecoder
 import com.recomo.remotecontrol.camviewer.video.VideoRecorder
 import com.recomo.remotecontrol.camviewer.tracking.ObjectTracker
@@ -77,6 +78,13 @@ private const val ORIN_CAMERA_WS_PORT = 9091
 enum class VideoTransport {
     WEBSOCKET,
     WEBRTC
+}
+
+private fun CommonConnectionState.toLocalConnectionState(): ConnectionState = when (this) {
+    CommonConnectionState.Disconnected -> ConnectionState.Disconnected
+    CommonConnectionState.Connecting -> ConnectionState.Connecting
+    CommonConnectionState.Connected -> ConnectionState.Connected
+    is CommonConnectionState.Error -> ConnectionState.Error(message)
 }
 
 /**
@@ -787,7 +795,7 @@ class VideoViewModel @Inject constructor(
                     launch(Dispatchers.IO) {
                         webSocketClient.connect(streamWsUrl)
                     }
-                    initializeWebRTC(settings.signalingUrl)
+                    initializeWebRTC(settings.webrtcSignalingUrl)
                 }
             }
         }
@@ -807,8 +815,8 @@ class VideoViewModel @Inject constructor(
             val existing = webrtcReceiver
             if (existing != null && webrtcSignalingUrl == trimmedUrl) {
                 when (existing.connectionState.value) {
-                    is WebRTCReceiver.ConnectionState.Connected,
-                    is WebRTCReceiver.ConnectionState.Connecting -> {
+                    is CommonConnectionState.Connected,
+                    is CommonConnectionState.Connecting -> {
                         Log.i(TAG, "WebRTC receiver already active for $trimmedUrl, skipping init")
                         return
                     }
@@ -874,12 +882,7 @@ class VideoViewModel @Inject constructor(
                     viewModelScope.launch {
                         receiver.connectionState.collect { rtcState ->
                             if (videoTransport == VideoTransport.WEBRTC) {
-                                _connectionState.value = when (rtcState) {
-                                    is WebRTCReceiver.ConnectionState.Disconnected -> ConnectionState.Disconnected
-                                    is WebRTCReceiver.ConnectionState.Connecting -> ConnectionState.Connecting
-                                    is WebRTCReceiver.ConnectionState.Connected -> ConnectionState.Connected
-                                    is WebRTCReceiver.ConnectionState.Error -> ConnectionState.Error(rtcState.message)
-                                }
+                                _connectionState.value = rtcState.toLocalConnectionState()
                             }
                         }
                     }

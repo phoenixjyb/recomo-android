@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -381,11 +382,12 @@ fun ConnectionScreen(
                                         }
                                     }
 
+                                    // Hoist local URL state so Connect button can
+                                    // flush it to DataStore before connecting.
+                                    var localUrl by remember { mutableStateOf(customGatewayUrl) }
+                                    LaunchedEffect(customGatewayUrl) { localUrl = customGatewayUrl }
+
                                     if (selectedRobot.profile == RobotProfile.CUSTOM) {
-                                        // Local state avoids cursor-jump caused by
-                                        // DataStore round-trip on every keystroke.
-                                        var localUrl by remember { mutableStateOf(customGatewayUrl) }
-                                        LaunchedEffect(customGatewayUrl) { localUrl = customGatewayUrl }
                                         OutlinedTextField(
                                             value = localUrl,
                                             onValueChange = { localUrl = it },
@@ -448,7 +450,10 @@ fun ConnectionScreen(
                                     }
 
                                     Button(
-                                        onClick = shellViewModel::connect,
+                                        onClick = {
+                                            val pending = if (selectedRobot.profile == RobotProfile.CUSTOM) localUrl else null
+                                            shellViewModel.connect(pending)
+                                        },
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = Color(0xFF00A3FF),
@@ -456,6 +461,16 @@ fun ConnectionScreen(
                                         )
                                     ) {
                                         Text(stringResource(R.string.connection_connect))
+                                    }
+
+                                    TextButton(
+                                        onClick = { shellViewModel.enterDemoMode() },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.connection_demo_mode),
+                                            color = Color.White.copy(alpha = 0.5f)
+                                        )
                                     }
                                 }
                             }

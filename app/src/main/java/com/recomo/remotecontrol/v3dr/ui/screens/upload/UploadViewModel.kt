@@ -2,8 +2,8 @@ package com.recomo.remotecontrol.v3dr.ui.screens.upload
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.recomo.remotecontrol.v3dr.data.model.UploadProgress
-import com.recomo.remotecontrol.v3dr.upload.UploadRepository
+import com.recomo.common.upload.UploadProgress
+import com.recomo.common.upload.UploadRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

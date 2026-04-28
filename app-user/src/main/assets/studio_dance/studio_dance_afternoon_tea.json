@@ -1,0 +1,238 @@
+{
+  "session_id": "studio_dance_afternoon_tea",
+  "session_name": "Sample 1",
+  "robot_name": "dogwood-01",
+  "frame_id": "t8space-3f",
+  "category": "Studio Dance",
+  "type": "studio_dance",
+  "music_file": "test_music_120bpm.wav",
+  "music_offset_ms": 0,
+  "bpm": 120,
+  "timestamp_ms": 1700000000000,
+  "fois": [
+    {
+      "name": "kf_000",
+      "sequence_index": 0,
+      "session_role": "foi",
+      "poi": {
+        "x": 0.0,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "arm_q": [
+        0.0,
+        -30.0,
+        0.0,
+        60.0,
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "gimbal_q": [
+        0.0,
+        -8.0,
+        0.0
+      ],
+      "timestamp_ms": "0",
+      "dwell_s": 0.3,
+      "transition_s": 2.16,
+      "ease": "ease_in_out"
+    },
+    {
+      "name": "kf_001",
+      "sequence_index": 1,
+      "session_role": "foi",
+      "poi": {
+        "x": 0.0,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "arm_q": [
+        0.0,
+        -30.0,
+        0.0,
+        60.0,
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "gimbal_q": [
+        0.0,
+        -14.1,
+        0.0
+      ],
+      "timestamp_ms": "2100",
+      "dwell_s": 0.3,
+      "transition_s": 2.16,
+      "ease": "ease_in_out"
+    },
+    {
+      "name": "kf_002",
+      "sequence_index": 2,
+      "session_role": "foi",
+      "poi": {
+        "x": -0.5533,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "arm_q": [
+        0.0,
+        -30.0,
+        0.0,
+        60.0,
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "gimbal_q": [
+        0.0,
+        -13.9,
+        0.0
+      ],
+      "timestamp_ms": "4300",
+      "dwell_s": 0.3,
+      "transition_s": 2.16,
+      "ease": "ease_in_out"
+    },
+    {
+      "name": "kf_003",
+      "sequence_index": 3,
+      "session_role": "foi",
+      "poi": {
+        "x": -1.0712,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "arm_q": [
+        0.0,
+        -30.0,
+        0.0,
+        60.0,
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "gimbal_q": [
+        0.0,
+        -10.5,
+        0.0
+      ],
+      "timestamp_ms": "6400",
+      "dwell_s": 0.3,
+      "transition_s": 2.16,
+      "ease": "ease_in_out"
+    },
+    {
+      "name": "kf_004",
+      "sequence_index": 4,
+      "session_role": "foi",
+      "poi": {
+        "x": -1.4151,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "arm_q": [
+        0.0,
+        -30.0,
+        0.0,
+        60.0,
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "gimbal_q": [
+        0.0,
+        -5.0,
+        0.0
+      ],
+      "timestamp_ms": "8600",
+      "dwell_s": 0.3,
+      "transition_s": 2.16,
+      "ease": "ease_in_out"
+    },
+    {
+      "name": "kf_005",
+      "sequence_index": 5,
+      "session_role": "foi",
+      "poi": {
+        "x": -1.3833,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "arm_q": [
+        0.0,
+        -30.0,
+        0.0,
+        60.0,
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "gimbal_q": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "timestamp_ms": "10700",
+      "dwell_s": 0.3,
+      "transition_s": 2.16,
+      "ease": "ease_in_out"
+    },
+    {
+      "name": "kf_006",
+      "sequence_index": 6,
+      "session_role": "foi",
+      "poi": {
+        "x": -0.8583,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "arm_q": [
+        0.0,
+        -30.0,
+        0.0,
+        60.0,
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "gimbal_q": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "timestamp_ms": "12900",
+      "dwell_s": 0.3,
+      "transition_s": 2.16,
+      "ease": "ease_in_out"
+    },
+    {
+      "name": "kf_007",
+      "sequence_index": 7,
+      "session_role": "foi",
+      "poi": {
+        "x": -1.5,
+        "y": 0.0,
+        "yaw": 0.0
+      },
+      "arm_q": [
+        0.0,
+        -30.0,
+        0.0,
+        60.0,
+        0.0,
+        -30.0,
+        0.0
+      ],
+      "gimbal_q": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "timestamp_ms": "15100",
+      "dwell_s": 0.3,
+      "transition_s": 2.16,
+      "ease": "ease_in_out"
+    }
+  ]
+}

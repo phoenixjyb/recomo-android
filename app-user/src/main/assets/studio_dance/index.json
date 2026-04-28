@@ -1,0 +1,14 @@
+[
+  {
+    "session_id": "studio_dance_afternoon_tea",
+    "session_name": "Sample 1",
+    "robot_name": "dogwood-01",
+    "frame_id": "t8space-3f",
+    "category": "Studio Dance",
+    "type": "studio_dance",
+    "foi_count": 8,
+    "bpm": 120,
+    "music_file": "test_music_120bpm.wav",
+    "file": "studio_dance_afternoon_tea.json"
+  }
+]

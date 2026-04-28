@@ -34,7 +34,11 @@ enum class TrajectoryPayloadFormat {
  */
 class TrajectoryResolver {
 
-    private val client = HttpClient(CIO)
+    private val client = HttpClient(CIO) {
+        engine {
+            proxy = null
+        }
+    }
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     /**
@@ -44,6 +48,23 @@ class TrajectoryResolver {
      * The caller (ViewModel) is responsible for converting this into
      * a SessionDetail and feeding it to the preview pipeline.
      */
+    /**
+     * Fetch an arbitrary text body (e.g. a TUM trajectory file). The
+     * viewer's own parser (`parseTUMContent`) reads full 6-DOF poses —
+     * much better than our session-JSON shim for cloud-sourced TUMs,
+     * which flattens to planar samples and drops height + orientation.
+     * Returns null on HTTP / network failure.
+     */
+    suspend fun downloadText(url: String): String? = withContext(Dispatchers.IO) {
+        try {
+            Log.i(TAG, "Downloading text from $url")
+            client.get(url).bodyAsText()
+        } catch (e: Exception) {
+            Log.e(TAG, "downloadText failed: ${e.message}", e)
+            null
+        }
+    }
+
     suspend fun downloadTrajectory(url: String): TrajectoryDownloadResult = withContext(Dispatchers.IO) {
         try {
             Log.i(TAG, "Downloading trajectory from $url")

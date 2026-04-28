@@ -35,6 +35,9 @@ class UserOrinMediaClient @Inject constructor(
             connectTimeoutMillis = 10_000
             socketTimeoutMillis = 30_000
         }
+        engine {
+            proxy = null
+        }
     }
 
     suspend fun listMedia(

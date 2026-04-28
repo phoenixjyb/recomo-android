@@ -24,13 +24,19 @@ android {
     namespace = "com.recomo.user"
     compileSdk = 34
 
+    androidResources {
+        // Prevent AAPT from compressing 3D scene assets — binary formats
+        // must be served byte-exact by WebViewAssetLoader.
+        noCompress += listOf("spz", "splat", "ply")
+    }
+
     defaultConfig {
         applicationId = "com.recomo.user"
         minSdk = 26
         targetSdk = 34
         versionCode = appVersionCode
         versionName = "$appVersionName.$buildTimestamp"
-        buildConfigField("String", "DEFAULT_CHAT_SERVER_URL", "\"ws://192.168.100.97:9110\"")
+        buildConfigField("String", "DEFAULT_CHAT_SERVER_URL", "\"ws://192.168.100.97:6776/chat\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "false"
         vectorDrawables {
@@ -92,6 +98,7 @@ dependencies {
     // Core
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.webkit:webkit:1.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
@@ -127,6 +134,11 @@ dependencies {
     implementation("io.ktor:ktor-client-logging:$ktorVersion")
     implementation("io.ktor:ktor-client-auth:$ktorVersion")
     implementation("io.ktor:ktor-client-websockets:$ktorVersion")
+
+    // SceneViewer: embedded HTTP server for serving viewer.html + SPZ assets
+    // to external browser (Edge / Chrome) on device. NanoHTTPD is a lightweight
+    // single-jar server with no transitive deps.
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
 
     // Logging
     implementation("io.github.oshai:kotlin-logging-jvm:5.1.1")

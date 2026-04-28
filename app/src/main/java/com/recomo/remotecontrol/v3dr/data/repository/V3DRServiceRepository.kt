@@ -1,7 +1,7 @@
 package com.recomo.remotecontrol.v3dr.data.repository
 
 import android.util.Log
-import com.recomo.remotecontrol.v3dr.data.NetworkProfiles
+import com.recomo.common.settings.NetworkProfiles
 import com.recomo.remotecontrol.v3dr.data.SettingsRepository
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName

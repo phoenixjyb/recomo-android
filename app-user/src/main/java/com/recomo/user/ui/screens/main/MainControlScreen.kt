@@ -1107,6 +1107,7 @@ private fun MainControlShortcutKey.icon(): ImageVector =
     when (this) {
         MainControlShortcutKey.MotionLibrary -> Icons.Outlined.Layers
         MainControlShortcutKey.CreateMotion -> Icons.Outlined.AutoAwesome
+        MainControlShortcutKey.SmartFollow -> Icons.Outlined.CenterFocusStrong
     }
 
 private fun MainControlTransportControlKey.icon(selected: Boolean): ImageVector =

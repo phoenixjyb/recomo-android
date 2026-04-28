@@ -2,9 +2,9 @@ package com.recomo.remotecontrol.v3dr.ui.screens.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.recomo.remotecontrol.v3dr.data.model.User
-import com.recomo.remotecontrol.v3dr.data.repository.AuthRepository
-import com.recomo.remotecontrol.v3dr.data.repository.AuthState
+import com.recomo.common.auth.User
+import com.recomo.common.auth.AuthRepository
+import com.recomo.common.auth.AuthState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

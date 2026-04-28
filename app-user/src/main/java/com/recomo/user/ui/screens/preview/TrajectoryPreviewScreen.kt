@@ -48,9 +48,12 @@ fun TrajectoryPreviewScreen(
     title: String = "Trajectory Preview",
     frameSummary: String? = null,
     executeLabel: String = "RUN",
+    scenePreviewLabel: String = "Scene Preview",
     config: RobotKinematicsConfig = RobotKinematics.defaultConfig(),
     onClose: () -> Unit,
-    onExecute: (() -> Unit)? = null
+    onExecute: (() -> Unit)? = null,
+    onOpenSceneViewer: (() -> Unit)? = null,
+    onPlaybackChanged: ((playing: Boolean) -> Unit)? = null
 ) {
     var currentIndex by remember { mutableStateOf(0) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -59,9 +62,12 @@ fun TrajectoryPreviewScreen(
         if (!isPlaying) return@LaunchedEffect
         while (isPlaying) {
             val next = currentIndex + 1
-            currentIndex = if (preview.samples.isNotEmpty()) {
-                if (next >= preview.samples.size) 0 else next
-            } else 0
+            if (preview.samples.isNotEmpty() && next >= preview.samples.size) {
+                // Loop: reset to start
+                currentIndex = 0
+            } else {
+                currentIndex = next
+            }
             delay(33L)
         }
     }
@@ -94,6 +100,12 @@ fun TrajectoryPreviewScreen(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (onOpenSceneViewer != null) {
+                        Button(
+                            onClick = onOpenSceneViewer,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C355E))
+                        ) { Text(scenePreviewLabel) }
+                    }
                     if (onExecute != null) {
                         Button(
                             onClick = onExecute,
@@ -121,7 +133,10 @@ fun TrajectoryPreviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { isPlaying = !isPlaying }) {
+                IconButton(onClick = {
+                    isPlaying = !isPlaying
+                    onPlaybackChanged?.invoke(isPlaying)
+                }) {
                     Icon(
                         if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
@@ -131,7 +146,11 @@ fun TrajectoryPreviewScreen(
                 if (preview.samples.isNotEmpty()) {
                     Slider(
                         value = currentIndex.toFloat(),
-                        onValueChange = { isPlaying = false; currentIndex = it.roundToInt() },
+                        onValueChange = {
+                            isPlaying = false
+                            onPlaybackChanged?.invoke(false)
+                            currentIndex = it.roundToInt()
+                        },
                         valueRange = 0f..(preview.samples.size - 1).toFloat().coerceAtLeast(0f),
                         modifier = Modifier.weight(1f)
                     )

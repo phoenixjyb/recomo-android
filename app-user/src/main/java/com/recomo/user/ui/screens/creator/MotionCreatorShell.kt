@@ -463,7 +463,9 @@ fun MotionCreatorCopyPresetUiState.toMotionDetailItem(): MotionDetailItem = Moti
     isPreset = true,
     thumbnailRes = thumbnailRes,
     trajectoryRes = trajectoryRes,
-    videoFileName = videoFileName
+    videoFileName = videoFileName,
+    previewTumAssetPath = previewTumAssetPath,
+    previewAnchorTumAssetPath = previewAnchorTumAssetPath
 )
 
 @Composable

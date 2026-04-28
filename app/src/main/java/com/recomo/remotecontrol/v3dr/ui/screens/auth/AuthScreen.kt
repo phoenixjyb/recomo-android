@@ -20,7 +20,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.recomo.remotecontrol.v3dr.data.repository.AuthState
+import com.recomo.common.auth.AuthState
+import com.recomo.common.auth.User
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -276,7 +277,7 @@ fun AuthScreen(
 
 @Composable
 private fun LoggedInView(
-    user: com.recomo.remotecontrol.v3dr.data.model.User,
+    user: User,
     onLogout: () -> Unit
 ) {
     Column(
@@ -320,13 +321,14 @@ private fun LoggedInView(
                     Text("Username:", style = MaterialTheme.typography.bodyMedium)
                     Text(user.username, style = MaterialTheme.typography.bodyMedium)
                 }
-                if (user.displayName != null) {
+                val displayName = user.displayName
+                if (displayName != null) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Display Name:", style = MaterialTheme.typography.bodyMedium)
-                        Text(user.displayName, style = MaterialTheme.typography.bodyMedium)
+                        Text(displayName, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }

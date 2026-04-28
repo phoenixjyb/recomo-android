@@ -33,7 +33,10 @@ data class LocalTrajectorySessionSummary(
     val frameId: String,
     val category: String,
     val count: Int,
-    val source: LocalTrajectorySessionSource
+    val source: LocalTrajectorySessionSource,
+    val sessionType: String? = null,
+    val bpm: Int? = null,
+    val musicFile: String? = null
 )
 
 data class LocalTrajectorySessionDetail(
@@ -45,7 +48,10 @@ data class LocalTrajectorySessionDetail(
     val sessionType: String? = null,
     val timestampMs: Long = 0L,
     val frames: List<LocalTrajectoryFrameRecord>,
-    val source: LocalTrajectorySessionSource
+    val source: LocalTrajectorySessionSource,
+    val musicFile: String? = null,
+    val musicOffsetMs: Long? = null,
+    val bpm: Int? = null
 )
 
 data class LocalTrajectorySessionLibrary(

@@ -145,5 +145,9 @@ data class MotionRunnerUiState(
     val rightRailTitle: String = "Safety & Actions",
     val safety: MotionRunnerSafetyUiState = MotionRunnerSafetyUiState(),
     val rightRailActions: List<MotionRunnerActionUiState> = emptyList(),
-    val rightRailStats: List<MotionRunnerMetricUiState> = emptyList()
+    val rightRailStats: List<MotionRunnerMetricUiState> = emptyList(),
+    val isStudioDance: Boolean = false,
+    val musicProgress: Float = 0f,
+    val musicTimeLabel: String = "--",
+    val musicFileName: String? = null
 )

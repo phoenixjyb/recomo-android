@@ -5,6 +5,7 @@ import com.recomo.common.preview.TrajectoryPreview
 enum class SceneType {
     SimpleTrack,
     LivePnC,
+    StudioDance,
     Unknown
 }
 
@@ -44,5 +45,8 @@ data class UserRunCommandState(
     val sceneType: SceneType = SceneType.Unknown,
     val connectionStatus: UserConnectionStatus = UserConnectionStatus.Disconnected,
     val executorState: Int = 0,
-    val stage2ExecutionStatus: String = "idle"
+    val stage2ExecutionStatus: String = "idle",
+    val isStudioDance: Boolean = false,
+    val musicFileName: String? = null,
+    val musicOffsetMs: Long = 0L
 )

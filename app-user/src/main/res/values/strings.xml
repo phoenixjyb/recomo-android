@@ -288,10 +288,31 @@
     <string name="chat_preview">Preview</string>
     <string name="chat_preview_title">Preview</string>
     <string name="chat_preview_frames_label">Frames</string>
+    <string name="scene_viewer_open">Scene Preview</string>
+    <string name="scene_viewer_subtitle">Embedded scene viewer shell</string>
+    <string name="scene_viewer_loading">Loading scene viewer…</string>
     <string name="chat_run">Run</string>
     <string name="chat_open_in_run">Open in Run</string>
     <string name="chat_reconnect">Reconnect</string>
     <string name="chat_prompt_hint">Describe your shot...</string>
+
+    <!-- Chat v2 — prompt hints + candidate carousel -->
+    <string name="connection_demo_mode">Demo Mode (no robot)</string>
+    <string name="chat_prompt_examples">Tap an example to prefill</string>
+    <string name="chat_templates_label">Quick starters</string>
+    <string name="chat_candidates_label">%1$d candidates</string>
+    <string name="chat_metric_duration">%1$.0fs</string>
+    <string name="chat_metric_frames">%1$d frames</string>
+    <string name="chat_confidence_label">Match</string>
+    <string name="chat_candidate_select">Select</string>
+    <string name="chat_candidate_selected">Selected</string>
+    <string name="chat_selected_banner_title">Ready to execute</string>
+    <string name="chat_selected_clear">Pick another</string>
+    <string name="chat_execute_on_robot">Execute on Robot</string>
+    <string name="chat_preview_candidate_progress">Preparing 3D preview…</string>
+    <string name="chat_execute_preparing">Staging trajectory…</string>
+    <string name="chat_execute_ready">Trajectory staged — opening runner</string>
+    <string name="chat_execute_failed">Couldn\'t stage trajectory: %1$s</string>
 
     <string name="action_ok">OK</string>
     <string name="action_cancel">Cancel</string>
@@ -323,6 +344,7 @@
     <string name="run_live_preview_waiting_frames">Waiting for frames</string>
     <string name="run_live_preview_receiving">Receiving frames</string>
     <string name="run_live_preview_error">Preview error</string>
+    <string name="run_live_preview_camera_permission_required">Camera permission is required for HDMI USB capture.</string>
     <string name="run_live_preview_no_url">No camera URL</string>
     <string name="run_live_preview_stream">Stream</string>
     <string name="run_live_preview_codec">Codec</string>
@@ -395,6 +417,25 @@
     <string name="route_motion_runner">Motion Runner</string>
     <string name="route_motion_library">Motion Library</string>
     <string name="route_motion_creator">Motion Creator</string>
+    <string name="route_smart_follow">Smart Follow</string>
+    <string name="smart_follow_detail">Track &amp; follow subject</string>
+    <string name="smart_follow_draw_hint">Draw a box on the video to select a target</string>
+    <string name="smart_follow_state_idle">Idle</string>
+    <string name="smart_follow_state_selecting">Selecting target</string>
+    <string name="smart_follow_state_pending">Initializing tracker…</string>
+    <string name="smart_follow_state_tracking">Tracking</string>
+    <string name="smart_follow_state_following">Following</string>
+    <string name="smart_follow_state_paused">Paused</string>
+    <string name="smart_follow_state_arrived">Arrived</string>
+    <string name="smart_follow_state_lost">Target lost</string>
+    <string name="smart_follow_state_error">Error</string>
+    <string name="smart_follow_confidence">Confidence %1$d%%</string>
+    <string name="smart_follow_btn_start">Start Follow</string>
+    <string name="smart_follow_btn_stop">Stop</string>
+    <string name="smart_follow_btn_pause">Pause</string>
+    <string name="smart_follow_btn_resume">Resume</string>
+    <string name="smart_follow_btn_reselect">Re-select</string>
+    <string name="smart_follow_btn_exit">Exit</string>
     <string name="route_touch_control">Touch Control</string>
     <string name="route_post_record">Post Record</string>
     <string name="post_record_subtitle">Review the latest take before moving on</string>
@@ -531,6 +572,11 @@
 
     <string name="chat_ai_director">AI Director</string>
     <string name="chat_describe_shot">Describe your shot…</string>
+    <string name="chat_snapshot_attached_hint">Current view will be attached</string>
+    <string name="chat_execute_deployed">Trajectory deployed to robot</string>
+    <string name="chat_candidate_preview_only">Preview only — awaiting executable from cloud</string>
+    <string name="chat_execute_download_failed">Download failed: %1$s</string>
+    <string name="chat_execute_deploy_failed">Deploy to robot failed: %1$s</string>
 
     <string name="main_pose_guide">POSE GUIDE</string>
     <string name="main_motions">MOTIONS</string>

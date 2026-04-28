@@ -22,7 +22,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.recomo.remotecontrol.v3dr.recording.arcore.ArCoreVideoRecorder
+import com.recomo.common.capture.arcore.ArCoreVideoRecorder
 import com.google.ar.core.TrackingState
 import java.io.File
 import android.app.Activity

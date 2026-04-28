@@ -11,8 +11,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.recomo.remotecontrol.v3dr.data.SettingsRepository
 import com.recomo.remotecontrol.v3dr.data.VioBackendType
-import com.recomo.remotecontrol.v3dr.data.model.ImuDataSet
-import com.recomo.remotecontrol.v3dr.data.model.ImuSample
+import com.recomo.common.capture.model.ImuDataSet
+import com.recomo.common.capture.model.ImuSample
 import com.recomo.remotecontrol.v3dr.vio.VioResult
 import com.recomo.remotecontrol.v3dr.vio.VioRunner
 import com.recomo.remotecontrol.v3dr.vio.VioSessionLoader

@@ -1,7 +1,7 @@
 package com.recomo.remotecontrol.v3dr.vio.openvins
 
 import android.util.Log
-import com.recomo.remotecontrol.v3dr.recording.CalibWriter
+import com.recomo.common.capture.recording.CalibWriter
 import com.recomo.remotecontrol.v3dr.vio.SyncPacket
 import kotlinx.serialization.json.Json
 import java.io.File

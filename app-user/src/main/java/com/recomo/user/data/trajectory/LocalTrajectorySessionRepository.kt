@@ -27,6 +27,23 @@ class LocalTrajectorySessionRepository(
         loadLibrary(filesystemRootPath).sessions
     }
 
+    suspend fun saveSessionFile(
+        rawJson: JsonObject,
+        sessionId: String,
+        filesystemRootPath: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val trimmedId = sessionId.trim()
+        val trimmedRoot = filesystemRootPath.trim()
+        if (trimmedId.isEmpty() || trimmedRoot.isEmpty()) return@withContext false
+        runCatching {
+            val rootDir = File(trimmedRoot).apply { if (!exists()) mkdirs() }
+            if (!rootDir.isDirectory) return@runCatching false
+            val file = File(rootDir, "$trimmedId.json")
+            file.writeText(json.encodeToString(JsonObject.serializer(), rawJson))
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun loadSession(sessionId: String, filesystemRootPath: String? = null): LocalTrajectorySessionDetail? = withContext(Dispatchers.IO) {
         loadLibrary(filesystemRootPath).details[sessionId.trim()]
     }
@@ -36,6 +53,12 @@ class LocalTrajectorySessionRepository(
         val detailsById = linkedMapOf<String, LocalTrajectorySessionDetail>()
 
         readAssetsLibrary().forEach { entry ->
+            sessionsById[entry.summary.sessionId] = entry.summary
+            detailsById[entry.detail.sessionId] = entry.detail
+        }
+
+        // Studio Dance sessions bundled in assets/studio_dance/
+        readAssetsLibraryFrom(STUDIO_DANCE_ASSETS_ROOT).forEach { entry ->
             sessionsById[entry.summary.sessionId] = entry.summary
             detailsById[entry.detail.sessionId] = entry.detail
         }
@@ -51,34 +74,40 @@ class LocalTrajectorySessionRepository(
         )
     }
 
-    private fun readAssetsLibrary(): List<LoadedTrajectorySession> {
-        val indexText = readAssetText("$assetsRoot/index.json")
+    private fun readAssetsLibrary(): List<LoadedTrajectorySession> =
+        readAssetsLibraryFrom(assetsRoot)
+
+    private fun readAssetsLibraryFrom(root: String): List<LoadedTrajectorySession> {
+        val indexText = readAssetText("$root/index.json")
         return when {
             indexText != null -> parseIndexedSessions(
                 indexText = indexText,
                 source = LocalTrajectorySessionSource(
                     kind = LocalTrajectorySessionSourceKind.Assets,
-                    rootPath = assetsRoot
+                    rootPath = root
                 ),
                 readDetail = { relativePath ->
-                    readAssetText("$assetsRoot/$relativePath")
+                    readAssetText("$root/$relativePath")
                 }
             )
-            else -> scanAssetSessions()
+            else -> scanAssetSessionsFrom(root)
         }
     }
 
-    private fun scanAssetSessions(): List<LoadedTrajectorySession> {
+    private fun scanAssetSessions(): List<LoadedTrajectorySession> =
+        scanAssetSessionsFrom(assetsRoot)
+
+    private fun scanAssetSessionsFrom(root: String): List<LoadedTrajectorySession> {
         val source = LocalTrajectorySessionSource(
             kind = LocalTrajectorySessionSourceKind.Assets,
-            rootPath = assetsRoot
+            rootPath = root
         )
-        val names = runCatching { context.assets.list(assetsRoot)?.toList().orEmpty() }.getOrDefault(emptyList())
+        val names = runCatching { context.assets.list(root)?.toList().orEmpty() }.getOrDefault(emptyList())
         return names
             .asSequence()
             .filter { it.endsWith(".json", ignoreCase = true) && !it.equals("index.json", ignoreCase = true) }
             .mapNotNull { fileName ->
-                val text = readAssetText("$assetsRoot/$fileName") ?: return@mapNotNull null
+                val text = readAssetText("$root/$fileName") ?: return@mapNotNull null
                 parseSessionFile(text, source)
             }
             .toList()
@@ -170,7 +199,10 @@ class LocalTrajectorySessionRepository(
             frameId = obj["frame_id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
             category = obj["category"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
             count = obj["foi_count"]?.jsonPrimitive?.intOrNull ?: 0,
-            source = source
+            source = source,
+            sessionType = obj["type"]?.jsonPrimitive?.contentOrNull?.trim(),
+            bpm = obj["bpm"]?.jsonPrimitive?.intOrNull,
+            musicFile = obj["music_file"]?.jsonPrimitive?.contentOrNull?.trim()
         )
     }
 
@@ -199,6 +231,9 @@ class LocalTrajectorySessionRepository(
         val sessionType = session["type"]?.jsonPrimitive?.contentOrNull?.trim()
         val timestampMs = session["timestamp_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
         val frames = parseFrames(session["fois"] ?: session["frames"])
+        val musicFile = session["music_file"]?.jsonPrimitive?.contentOrNull?.trim()
+        val musicOffsetMs = session["music_offset_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+        val bpm = session["bpm"]?.jsonPrimitive?.intOrNull
         return LocalTrajectorySessionDetail(
             sessionId = sessionId,
             sessionName = sessionName,
@@ -208,7 +243,10 @@ class LocalTrajectorySessionRepository(
             sessionType = sessionType,
             timestampMs = timestampMs,
             frames = frames,
-            source = source
+            source = source,
+            musicFile = musicFile,
+            musicOffsetMs = musicOffsetMs,
+            bpm = bpm
         )
     }
 
@@ -250,7 +288,10 @@ class LocalTrajectorySessionRepository(
             frameId = frameId,
             category = category,
             count = frames.size,
-            source = source
+            source = source,
+            sessionType = sessionType,
+            bpm = bpm,
+            musicFile = musicFile
         )
     }
 
@@ -282,5 +323,6 @@ class LocalTrajectorySessionRepository(
 
     companion object {
         const val DEFAULT_ASSETS_ROOT = "sample_sessions"
+        const val STUDIO_DANCE_ASSETS_ROOT = "studio_dance"
     }
 }

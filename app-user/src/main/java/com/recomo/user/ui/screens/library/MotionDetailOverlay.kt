@@ -1,5 +1,6 @@
 package com.recomo.user.ui.screens.library
 
+import com.recomo.user.control.UserLibraryTarget
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -58,9 +59,18 @@ data class MotionDetailItem(
     val gradientStart: Color = Color(0xFF0084E8),
     val gradientEnd: Color = Color(0xFF7B5EFF),
     val isPreset: Boolean = false,
+    val libraryTarget: UserLibraryTarget? = null,
     @androidx.annotation.DrawableRes val thumbnailRes: Int? = null,
     @androidx.annotation.DrawableRes val trajectoryRes: Int? = null,
-    val videoFileName: String? = null
+    val videoFileName: String? = null,
+    /** Bundled asset path of a pre-computed preview TUM, for CopyStyle presets. */
+    val previewTumAssetPath: String? = null,
+    /** Bundled asset path of a pre-computed anchor TUM (single-line pose). */
+    val previewAnchorTumAssetPath: String? = null,
+    val musicFile: String? = null,
+    val musicOffsetMs: Long? = null,
+    val bpm: Int? = null,
+    val isStudioDance: Boolean = false
 )
 
 @Composable
@@ -68,6 +78,8 @@ fun MotionDetailOverlay(
     item: MotionDetailItem,
     onBack: () -> Unit,
     onRunThis: () -> Unit,
+    onOpenSceneViewer: (() -> Unit)? = null,
+    onPreview: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     videoFile: File? = null
 ) {
@@ -208,7 +220,10 @@ fun MotionDetailOverlay(
                                 .fillMaxWidth()
                                 .weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF101418)),
+                                .background(Color(0xFF101418))
+                                .clickable(enabled = onOpenSceneViewer != null, onClick = {
+                                    onOpenSceneViewer?.invoke()
+                                }),
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
@@ -242,6 +257,66 @@ fun MotionDetailOverlay(
                                 icon = Icons.Default.PlayArrow,
                                 text = item.sceneType
                             )
+                        }
+                        if (item.bpm != null) {
+                            MetadataPill(
+                                icon = Icons.Default.PlayArrow,
+                                text = "${item.bpm} BPM"
+                            )
+                        }
+                        if (item.isStudioDance && item.musicFile != null) {
+                            MetadataPill(
+                                icon = Icons.Default.PlayArrow,
+                                text = item.musicFile
+                            )
+                        }
+                    }
+
+                    if (onOpenSceneViewer != null) {
+                        Button(
+                            onClick = onOpenSceneViewer,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF182033),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, Color(0xFF2E4B76))
+                        ) {
+                            Text(
+                                text = stringResource(R.string.scene_viewer_open),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    // Preview button — Studio Dance
+                    if (onPreview != null) {
+                        Button(
+                            onClick = onPreview,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF2A1533),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, Color(0xFF7B5EFF).copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color(0xFFB89AFF)
+                                )
+                                Text(
+                                    text = "Preview",
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
 
@@ -326,18 +401,26 @@ private fun MetadataPill(
 // Conversion helpers
 
 fun LibrarySessionSummaryUiItem.toMotionDetailItem(): MotionDetailItem {
+    val isStudioDance = sessionType?.equals("studio_dance", ignoreCase = true) == true
     val gradients = gradientForCategory(category)
+    // Studio Dance sessions bundled in assets have a companion TUM file for preview
+    val tumAssetPath = if (isStudioDance) "studio_dance/$sessionId.tum" else null
     return MotionDetailItem(
         id = sessionId,
         title = displayMotionTitle(),
         subtitle = displayMotionSubtitle(),
         keyframes = count,
         duration = 0,
-        sceneType = sceneType,
+        sceneType = if (isStudioDance) "Studio Dance" else sceneType,
         linkedMap = linkedMap,
         gradientStart = gradients.first,
         gradientEnd = gradients.second,
-        isPreset = false
+        isPreset = false,
+        libraryTarget = libraryTarget,
+        previewTumAssetPath = tumAssetPath,
+        musicFile = musicFile,
+        bpm = bpm,
+        isStudioDance = isStudioDance
     )
 }
 
@@ -347,5 +430,6 @@ private fun gradientForCategory(category: String): Pair<Color, Color> = when (ca
     "interview" -> Color(0xFF00BFA5) to Color(0xFF0084E8)
     "cinematic" -> Color(0xFF7B5EFF) to Color(0xFF2C3E94)
     "tour" -> Color(0xFF26A69A) to Color(0xFF1E88E5)
+    "studio dance" -> Color(0xFFE91E63) to Color(0xFF7B5EFF)
     else -> Color(0xFF0084E8) to Color(0xFF7B5EFF)
 }

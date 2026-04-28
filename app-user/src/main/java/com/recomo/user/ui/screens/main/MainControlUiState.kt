@@ -52,7 +52,8 @@ data class MainControlPreviewUiState(
 
 enum class MainControlShortcutKey {
     MotionLibrary,
-    CreateMotion
+    CreateMotion,
+    SmartFollow
 }
 
 data class MainControlShortcutUiState(

@@ -1,0 +1,244 @@
+package com.recomo.common.capture.recording
+
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.util.Log
+import android.view.Surface
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import java.nio.ByteBuffer
+
+/**
+ * VideoEncoder for V3DR app - simplified version without WebSocket streaming.
+ * Encodes camera frames to H.264/H.265 and outputs to muxer for MP4 file creation.
+ */
+class VideoEncoder(
+    private val scope: CoroutineScope
+) {
+    private var mediaCodec: MediaCodec? = null
+    private var _inputSurface: Surface? = null
+    val inputSurface: Surface?
+        get() = _inputSurface
+
+    @Volatile private var codecConfigAnnexB: ByteArray? = null
+    @Volatile private var muxerSink: MuxerSink? = null
+    @Volatile private var lastOutputFormat: MediaFormat? = null
+    @Volatile private var drainJob: Job? = null
+    
+    val isRunning: Boolean
+        get() = drainJob != null && mediaCodec != null
+
+    companion object {
+        private const val TAG = "VideoEncoder"
+        private const val MIME_TYPE_AVC = MediaFormat.MIMETYPE_VIDEO_AVC
+        private const val MIME_TYPE_HEVC = MediaFormat.MIMETYPE_VIDEO_HEVC
+        private const val I_FRAME_INTERVAL = 1
+        private val START_CODE = byteArrayOf(0x00, 0x00, 0x00, 0x01)
+    }
+
+    private var width = 1920
+    private var height = 1080
+    private var frameRate = 30
+    private var bitRate = 8 * 1024 * 1024
+    private var mimeType: String = MIME_TYPE_HEVC
+
+    fun configure(width: Int, height: Int, fps: Int, bitrate: Int, codec: String? = null) {
+        this.width = width
+        this.height = height
+        this.frameRate = fps
+        this.bitRate = bitrate
+        codec?.let {
+            this.mimeType = when (it.lowercase()) {
+                "h265", "hevc" -> MIME_TYPE_HEVC
+                else -> MIME_TYPE_AVC
+            }
+        }
+    }
+
+    fun start() {
+        Log.d(TAG, "Starting encoder: ${width}x${height} @ ${frameRate}fps, ${bitRate / 1_000_000}Mbps, codec=$mimeType")
+        val format = MediaFormat.createVideoFormat(mimeType, width, height).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_BIT_RATE, bitRate)
+            setInteger(MediaFormat.KEY_FRAME_RATE, frameRate)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
+            try { setInteger(MediaFormat.KEY_LOW_LATENCY, 1) } catch (_: Throwable) {}
+            try { setInteger(MediaFormat.KEY_LATENCY, 0) } catch (_: Throwable) {}
+            try { setInteger(MediaFormat.KEY_PRIORITY, 0) } catch (_: Throwable) {}
+            try { setInteger(MediaFormat.KEY_COMPLEXITY, 0) } catch (_: Throwable) {}
+            try { setInteger(MediaFormat.KEY_OPERATING_RATE, frameRate) } catch (_: Throwable) {}
+            if (mimeType == MIME_TYPE_AVC) {
+                // H.264 profiles
+                try { setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh) } catch (_: Throwable) {
+                    try { setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileMain) } catch (_: Throwable) {}
+                }
+                try { setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel4) } catch (_: Throwable) {}
+                // CBR for H.264 stability
+                try { setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) } catch (_: Throwable) {}
+            } else {
+                // H.265 profiles - aim for better quality
+                try { setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain) } catch (_: Throwable) {}
+                // Use higher level for better quality ceiling
+                try { setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.HEVCMainTierLevel51) } catch (_: Throwable) {
+                    try { setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.HEVCMainTierLevel5) } catch (_: Throwable) {}
+                }
+                // VBR allows better quality distribution (more bits to complex scenes)
+                try { setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) } catch (_: Throwable) {
+                    // Fallback to CQ (constant quality) if VBR not supported
+                    try { setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CQ) } catch (_: Throwable) {}
+                }
+            }
+            // Prepend SPS/PPS to IDR (framework key where supported)
+            try { setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1) } catch (_: Throwable) {}
+        }
+
+        // Cancel and WAIT for any existing drain job to prevent concurrent access
+        drainJob?.cancel()
+        drainJob = null
+        
+        mediaCodec = MediaCodec.createEncoderByType(mimeType).apply {
+            configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            _inputSurface = createInputSurface()
+            start()
+        }
+
+        drainJob = scope.launch(Dispatchers.IO) { drainEncoder() }
+        Log.d(TAG, "Encoder started successfully")
+    }
+
+    private fun drainEncoder() {
+        val bufferInfo = MediaCodec.BufferInfo()
+        while (scope.isActive) {
+            try {
+                val codec = mediaCodec ?: break
+                val outIndex = codec.dequeueOutputBuffer(bufferInfo, 1000)
+                
+                if (outIndex >= 0) {
+                    val outputBuffer = codec.getOutputBuffer(outIndex)
+                    if (outputBuffer != null && bufferInfo.size > 0) {
+                        outputBuffer.position(bufferInfo.offset)
+                        outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                        val isCodecConfig = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+                        
+                        if (!isCodecConfig) {
+                            val sample = ByteArray(bufferInfo.size)
+                            outputBuffer.get(sample)
+                            
+                            // Feed sample to muxer sink for MP4
+                            muxerSink?.let { sink ->
+                                val dupInfo = MediaCodec.BufferInfo().apply {
+                                    set(bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
+                                }
+                                sink.onSample(ByteBuffer.wrap(sample), dupInfo)
+                            }
+                        }
+                    }
+                    codec.releaseOutputBuffer(outIndex, false)
+                } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    val format = codec.outputFormat
+                    val csd0 = format.getByteBuffer("csd-0")
+                    val csd1 = format.getByteBuffer("csd-1")
+                    val parts = ArrayList<ByteArray>()
+                    if (csd0 != null) parts.add(convertToAnnexB(byteBufferToArray(csd0)))
+                    if (csd1 != null) parts.add(convertToAnnexB(byteBufferToArray(csd1)))
+                    codecConfigAnnexB = parts.fold(ByteArray(0)) { acc, bytes -> acc + bytes }
+                    Log.d(TAG, "Output format: $format")
+
+                    lastOutputFormat = format
+                    muxerSink?.onFormatChanged(format)
+                } else if (outIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                    Thread.sleep(1)
+                } else {
+                    Thread.sleep(1)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error in drainEncoder: ${e.message}")
+                Thread.sleep(200)
+            }
+        }
+    }
+
+    fun stop() {
+        Log.d(TAG, "Stopping encoder")
+        drainJob?.cancel()
+        drainJob = null
+        try { mediaCodec?.signalEndOfInputStream() } catch (_: Throwable) {}
+        mediaCodec?.stop()
+        mediaCodec?.release()
+        mediaCodec = null
+        _inputSurface = null
+        codecConfigAnnexB = null
+    }
+
+    fun requestKeyFrame() {
+        try {
+            val codec = mediaCodec ?: return
+            val b = android.os.Bundle()
+            b.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+            codec.setParameters(b)
+            Log.d(TAG, "Requested keyframe")
+        } catch (t: Throwable) {
+            Log.w(TAG, "requestKeyFrame failed", t)
+        }
+    }
+
+    fun setBitrate(newBitrate: Int) {
+        try {
+            val codec = mediaCodec ?: run {
+                Log.w(TAG, "Cannot set bitrate: encoder not started")
+                return
+            }
+            this.bitRate = newBitrate
+            val b = android.os.Bundle()
+            b.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, newBitrate)
+            codec.setParameters(b)
+            Log.d(TAG, "Dynamic bitrate update: ${newBitrate / 1_000_000} Mbps")
+        } catch (t: Throwable) {
+            Log.w(TAG, "setBitrate failed: ${t.message}")
+        }
+    }
+
+    private fun byteBufferToArray(bb: ByteBuffer): ByteArray {
+        val dup = bb.duplicate(); dup.clear()
+        val arr = ByteArray(dup.remaining())
+        dup.get(arr)
+        return arr
+    }
+
+    private fun convertToAnnexB(sample: ByteArray): ByteArray {
+        if (sample.size >= 4 && sample[0] == 0.toByte() && sample[1] == 0.toByte() && sample[2] == 0.toByte() && sample[3] == 1.toByte()) {
+            return sample
+        }
+        var offset = 0
+        val out = ArrayList<ByteArray>()
+        while (offset + 4 <= sample.size) {
+            val length = ((sample[offset].toInt() and 0xFF) shl 24) or
+                    ((sample[offset + 1].toInt() and 0xFF) shl 16) or
+                    ((sample[offset + 2].toInt() and 0xFF) shl 8) or
+                    (sample[offset + 3].toInt() and 0xFF)
+            offset += 4
+            if (length <= 0 || offset + length > sample.size) break
+            out.add(START_CODE + sample.copyOfRange(offset, offset + length))
+            offset += length
+        }
+        return out.fold(ByteArray(0)) { acc, bytes -> acc + bytes }
+    }
+
+    fun setMuxerSink(sink: MuxerSink?) {
+        muxerSink = sink
+        // If a sink attaches after encoder has started, provide format immediately
+        val fmt = lastOutputFormat
+        if (sink != null && fmt != null) {
+            try { sink.onFormatChanged(fmt) } catch (_: Throwable) {}
+        }
+    }
+
+    interface MuxerSink {
+        fun onFormatChanged(format: MediaFormat)
+        fun onSample(sample: ByteBuffer, bufferInfo: MediaCodec.BufferInfo)
+    }
+}

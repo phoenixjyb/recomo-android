@@ -287,10 +287,31 @@
     <string name="chat_preview">预览</string>
     <string name="chat_preview_title">预览</string>
     <string name="chat_preview_frames_label">帧数</string>
+    <string name="scene_viewer_open">场景预览</string>
+    <string name="scene_viewer_subtitle">内嵌场景查看器</string>
+    <string name="scene_viewer_loading">正在加载场景查看器…</string>
     <string name="chat_run">运行</string>
     <string name="chat_open_in_run">在运行中打开</string>
     <string name="chat_reconnect">重新连接</string>
     <string name="chat_prompt_hint">描述你的镜头...</string>
+
+    <!-- Chat v2 — 提示卡片 + 候选方案 -->
+    <string name="connection_demo_mode">演示模式（无需连接机器人）</string>
+    <string name="chat_prompt_examples">点击示例以自动填充</string>
+    <string name="chat_templates_label">快速开始</string>
+    <string name="chat_candidates_label">%1$d 个候选方案</string>
+    <string name="chat_metric_duration">%1$.0f 秒</string>
+    <string name="chat_metric_frames">%1$d 帧</string>
+    <string name="chat_confidence_label">匹配度</string>
+    <string name="chat_candidate_select">选择</string>
+    <string name="chat_candidate_selected">已选择</string>
+    <string name="chat_selected_banner_title">可以执行</string>
+    <string name="chat_selected_clear">换一个</string>
+    <string name="chat_execute_on_robot">在机器人上执行</string>
+    <string name="chat_preview_candidate_progress">正在准备 3D 预览…</string>
+    <string name="chat_execute_preparing">正在加载轨迹…</string>
+    <string name="chat_execute_ready">轨迹已准备 — 打开 Runner</string>
+    <string name="chat_execute_failed">加载轨迹失败:%1$s</string>
 
     <string name="action_ok">确定</string>
     <string name="action_cancel">取消</string>
@@ -322,6 +343,7 @@
     <string name="run_live_preview_waiting_frames">等待视频帧</string>
     <string name="run_live_preview_receiving">正在接收视频帧</string>
     <string name="run_live_preview_error">预览错误</string>
+    <string name="run_live_preview_camera_permission_required">HDMI USB 采集需要相机权限。</string>
     <string name="run_live_preview_no_url">未配置相机地址</string>
     <string name="run_live_preview_stream">视频流</string>
     <string name="run_live_preview_codec">编码</string>
@@ -394,6 +416,25 @@
     <string name="route_motion_runner">运镜执行</string>
     <string name="route_motion_library">运镜库</string>
     <string name="route_motion_creator">运镜创建</string>
+    <string name="route_smart_follow">智能跟随</string>
+    <string name="smart_follow_detail">跟踪并跟随目标</string>
+    <string name="smart_follow_draw_hint">在视频上画框选择跟踪目标</string>
+    <string name="smart_follow_state_idle">空闲</string>
+    <string name="smart_follow_state_selecting">选择目标</string>
+    <string name="smart_follow_state_pending">正在初始化跟踪器…</string>
+    <string name="smart_follow_state_tracking">跟踪中</string>
+    <string name="smart_follow_state_following">跟随中</string>
+    <string name="smart_follow_state_paused">已暂停</string>
+    <string name="smart_follow_state_arrived">已到达</string>
+    <string name="smart_follow_state_lost">目标丢失</string>
+    <string name="smart_follow_state_error">错误</string>
+    <string name="smart_follow_confidence">置信度 %1$d%%</string>
+    <string name="smart_follow_btn_start">开始跟随</string>
+    <string name="smart_follow_btn_stop">停止</string>
+    <string name="smart_follow_btn_pause">暂停</string>
+    <string name="smart_follow_btn_resume">继续</string>
+    <string name="smart_follow_btn_reselect">重新选择</string>
+    <string name="smart_follow_btn_exit">退出</string>
     <string name="route_touch_control">触控操控</string>
     <string name="route_post_record">录制回看</string>
     <string name="post_record_subtitle">查看最新一条素材，再继续下一步</string>
@@ -530,6 +571,11 @@
 
     <string name="chat_ai_director">AI 导演</string>
     <string name="chat_describe_shot">描述你的镜头…</string>
+    <string name="chat_snapshot_attached_hint">将附带当前画面</string>
+    <string name="chat_execute_deployed">已下发轨迹到机器人</string>
+    <string name="chat_candidate_preview_only">仅预览 — 等待云端可执行轨迹</string>
+    <string name="chat_execute_download_failed">下载失败: %1$s</string>
+    <string name="chat_execute_deploy_failed">下发到机器人失败: %1$s</string>
 
     <string name="main_pose_guide">位姿引导</string>
     <string name="main_motions">动作库</string>

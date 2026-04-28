@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- USB Video Class (UVC) devices - class 14 (0x0E) -->
+    <usb-device class="14" />
+
+    <!-- Miscellaneous class devices that may contain UVC interfaces -->
+    <usb-device class="239" />
+
+    <!-- Common HDMI capture card vendor/product IDs -->
+    <!-- Generic UVC capture cards -->
+    <usb-device vendor-id="11145" />
+
+    <!-- Elgato capture cards -->
+    <usb-device vendor-id="3478" />
+
+    <!-- AverMedia capture cards -->
+    <usb-device vendor-id="2040" />
+
+    <!-- Magewell capture cards -->
+    <usb-device vendor-id="11378" />
+</resources>

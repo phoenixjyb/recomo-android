@@ -1,0 +1,3311 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>高斯点云查看器</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            outline: none;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        #renderCanvas:active {
+            cursor: grabbing;
+        }
+
+        .controls {
+            position: absolute;
+            top: calc(10px + env(safe-area-inset-top));
+            left: calc(10px + env(safe-area-inset-left));
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            max-width: 250px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .controls.collapsed {
+            padding: 8px;
+            max-width: 40px;
+            min-width: 40px;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .controls.collapsed .collapsible {
+            display: none;
+        }
+
+        .controls.collapsed .toggle-btn {
+            position: static;
+            width: 24px;
+            height: 24px;
+            font-size: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #555;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .toggle-btn {
+            position: absolute;
+            top: 2px;
+            right: 5px;
+            background: none;
+            border: none;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0;
+            margin: 0;
+            width: 20px;
+            height: 20px;
+        }
+
+        .toggle-btn:hover {
+            color: white;
+        }
+
+        .file-input {
+            margin-bottom: 6px;
+        }
+
+        .camera-info {
+            font-family: monospace;
+            font-size: 10px;
+            line-height: 1.2;
+            max-width: 240px;
+            margin-top: 6px;
+        }
+
+        .pose-setter {
+            margin-top: 6px;
+            padding: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 3px;
+        }
+
+        .pose-setter strong {
+            font-size: 11px;
+        }
+
+        .pose-setter small {
+            font-size: 9px;
+            color: #ccc;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .pose-setter input {
+            width: 50px;
+            margin: 1px;
+            padding: 2px;
+            font-size: 10px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 2px;
+        }
+
+        .pose-setter label {
+            display: block;
+            margin: 3px 0 1px 0;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .pose-setter button {
+            margin: 2px 1px;
+            padding: 2px 6px;
+            font-size: 10px;
+        }
+
+        input[type="file"] {
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 3px;
+            border-radius: 2px;
+            font-size: 11px;
+            width: 100%;
+        }
+
+        button {
+            background: #444;
+            color: white;
+            border: 1px solid #666;
+            padding: 4px 8px;
+            border-radius: 2px;
+            margin-bottom: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .tum-trajectory {
+            background: rgba(60, 60, 80, 0.9);
+            padding: 6px;
+            border-radius: 3px;
+            margin-bottom: 6px;
+            border: 1px solid #555;
+        }
+
+        .tum-trajectory strong {
+            font-size: 11px;
+        }
+
+        .tum-trajectory input[type="file"] {
+            margin-bottom: 3px;
+            font-size: 10px;
+        }
+
+        .tum-trajectory input[type="range"] {
+            margin: 0;
+            min-width: 60px;
+        }
+
+        .tum-trajectory input[type="checkbox"] {
+            margin: 0;
+        }
+
+        #tumControls {
+            margin-top: 3px;
+        }
+
+        #tumControls button {
+            margin: 1px;
+            padding: 2px 5px;
+            font-size: 9px;
+        }
+
+        #tumControls label,
+        #speedLabel,
+        #progressLabel {
+            font-size: 9px;
+            color: #ccc;
+        }
+
+        #tumControls label {
+            margin-right: 2px;
+        }
+
+        button[disabled] {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .panel-section {
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+        }
+
+        .section-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.92);
+        }
+
+        .section-pill {
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.82);
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .section-pill.is-empty {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .section-pill.is-ready {
+            color: rgba(180, 245, 202, 0.95);
+            background: rgba(74, 164, 104, 0.22);
+            border-color: rgba(116, 214, 148, 0.36);
+        }
+
+        .section-pill.is-pending {
+            color: rgba(255, 225, 166, 0.95);
+            background: rgba(168, 118, 22, 0.22);
+            border-color: rgba(230, 177, 62, 0.34);
+        }
+
+        .section-pill.is-playing {
+            color: rgba(204, 228, 255, 0.96);
+            background: rgba(65, 121, 197, 0.26);
+            border-color: rgba(106, 168, 247, 0.36);
+        }
+
+        .section-note {
+            margin-top: 6px;
+            font-size: 10px;
+            line-height: 1.4;
+            color: rgba(255, 255, 255, 0.68);
+        }
+
+        .advanced-panel summary {
+            cursor: pointer;
+            list-style: none;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.92);
+        }
+
+        .advanced-panel summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .advanced-panel[open] summary {
+            margin-bottom: 8px;
+        }
+
+        .status {
+            position: absolute;
+            bottom: calc(10px + env(safe-area-inset-bottom));
+            left: calc(10px + env(safe-area-inset-left));
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            min-width: min(72vw, 360px);
+        }
+
+        .status-primary {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.96);
+        }
+
+        .status-meta {
+            margin-top: 4px;
+            font-size: 10px;
+            line-height: 1.35;
+            color: rgba(255, 255, 255, 0.68);
+        }
+
+        .camera-toolbar {
+            position: absolute;
+            top: calc(10px + env(safe-area-inset-top));
+            right: calc(10px + env(safe-area-inset-right));
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: min(56vw, 320px);
+            z-index: 10;
+        }
+
+        .camera-toolbar-main,
+        .camera-toolbar-hint {
+            background: rgba(0, 0, 0, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+        }
+
+        .camera-toolbar-main {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px;
+            justify-content: flex-end;
+        }
+
+        .camera-chip {
+            margin: 0;
+            padding: 9px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            font-size: 12px;
+            line-height: 1;
+        }
+
+        .camera-chip:hover,
+        .camera-chip.active {
+            background: rgba(92, 164, 255, 0.28);
+            border-color: rgba(124, 190, 255, 0.5);
+        }
+
+        .camera-toolbar-hint {
+            padding: 10px 12px;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        .camera-toolbar.is-locked .camera-toolbar-main,
+        .camera-toolbar.is-locked .camera-toolbar-hint {
+            border-color: rgba(106, 168, 247, 0.36);
+        }
+
+        @media (pointer: coarse) {
+            .controls {
+                max-width: min(68vw, 300px);
+            }
+
+            .camera-toolbar {
+                max-width: min(72vw, 360px);
+            }
+
+            .camera-chip {
+                padding: 12px 14px;
+                font-size: 13px;
+            }
+
+            .camera-toolbar-hint {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="renderCanvas"></canvas>
+
+    <div class="controls" id="controlPanel">
+        <button class="toggle-btn" onclick="toggleControls()">▼</button>
+
+        <div class="collapsible">
+            <div class="panel-section">
+                <div class="section-heading">
+                    <span class="section-title">Scene</span>
+                    <span class="section-pill" id="sceneStatePill">No scene</span>
+                </div>
+                <div class="file-input">
+                    <input type="file" id="fileInput" accept=".spz,.ply,.splat" />
+                </div>
+                <div style="margin: 4px 0;">
+                    <button id="loadDemoBtn" onclick="window.viewer && window.viewer.loadBundledScene()"
+                        style="width: 100%; padding: 4px 8px; font-size: 10px; cursor: pointer;">
+                        Load Demo (T8-lobby.spz)
+                    </button>
+                </div>
+                <div class="section-note" id="sceneSummary">
+                    等待 Android 注入场景，或手动加载 .spz / .splat / .ply 文件。
+                </div>
+            </div>
+
+            <div class="panel-section tum-trajectory">
+                <div class="section-heading">
+                    <span class="section-title">Trajectory</span>
+                    <span class="section-pill" id="trajectoryStatePill">No trajectory</span>
+                </div>
+                <div class="section-note" id="trajectorySummary">
+                    支持 Android 注入、JSON 转 TUM，或手动导入 .tum / .txt。
+                </div>
+                <div style="margin: 6px 0 3px 0;">
+                    <input type="file" id="tumFile" accept=".txt,.tum" style="width: 100%;">
+                </div>
+                <div id="tumControls" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 3px; margin: 3px 0;">
+                        <button onclick="window.viewer && window.viewer.playTUMTrajectory()" id="playBtn"
+                            style="flex: 1;">▶️</button>
+                        <button onclick="window.viewer && window.viewer.pauseTUMTrajectory()" id="pauseBtn"
+                            style="flex: 1;">⏸️</button>
+                        <button onclick="window.viewer && window.viewer.stopTUMTrajectory()" id="stopBtn"
+                            style="flex: 1;">⏹️</button>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 9px;">
+                        <label style="display: flex; align-items: center; gap: 2px; margin: 0;">
+                            <input type="checkbox" id="loopPlay" checked>
+                            循环播放
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 2px; margin: 0;">
+                            <input type="checkbox" id="frameByFrame">
+                            逐帧播放
+                        </label>
+                    </div>
+                    <small style="font-size: 8px; color: #999; margin: 0 0 3px 0;">逐帧播放：固定30FPS，否则按原始时间戳播放</small>
+                    <div style="display: flex; align-items: center; gap: 4px; margin: 3px 0; font-size: 9px;">
+                        <label style="margin: 0;">速度:</label>
+                        <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1" style="flex: 1;">
+                        <span id="speedLabel" style="min-width: 30px;">1.0x</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px; margin: 3px 0; font-size: 9px;">
+                        <label style="margin: 0;">进度:</label>
+                        <input type="range" id="progressSlider" min="0" max="100" value="0" style="flex: 1;">
+                        <span id="progressLabel" style="min-width: 45px;">0/0</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px; margin: 3px 0; font-size: 9px;">
+                        <label style="margin: 0;">尺度:</label>
+                        <input type="range" id="scaleSlider" min="0.1" max="10" step="0.1" value="1" style="flex: 1;">
+                        <span id="scaleLabel" style="min-width: 30px;">1.0x</span>
+                    </div>
+                    <small style="font-size: 8px; color: #999; margin: 0 0 3px 0;">调整轨迹的空间尺度以适应不同场景大小</small>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-heading">
+                    <span class="section-title">Interaction</span>
+                    <span class="section-pill" id="inputModePill">Touch</span>
+                </div>
+                <div class="section-note" id="interactionGuide">
+                    单指旋转 · 双指平移 · 捏合缩放 · 双击聚焦。
+                </div>
+            </div>
+
+            <details class="panel-section advanced-panel" id="advancedPanel">
+                <summary>Advanced / Debug</summary>
+                <div class="section-note">
+                    这里放坐标调试、键盘控制、原始位姿输入和性能诊断。默认不是主操作流。
+                </div>
+                <button onclick="window.viewer && window.viewer.getCameraPoseRDF()">
+                    获取相机位姿 (RDF)
+                </button>
+                <button onclick="window.viewer && window.viewer.analyzeCoordinateSystem()" style="margin-top: 5px;">
+                    🔍 分析坐标系
+                </button>
+                <button id="keyboardToggleBtn" onclick="window.viewer && window.viewer.toggleKeyboardControl()" style="margin-top: 5px;">
+                    🎮 键盘控制
+                </button>
+                <div id="mouseInvertRow" style="margin-top: 5px; font-size: 11px;">
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="checkbox" id="mouseInvertCheckbox" style="margin: 0;">
+                        🐭 反转鼠标拖动方向
+                    </label>
+                </div>
+                <button onclick="window.viewer && window.viewer.diagnosePerformance()" style="margin-top: 5px;">
+                    📊 性能诊断
+                </button>
+
+                <div style="margin: 8px 0 5px 0; font-size: 10px;">
+                    <label>坐标系状态:</label>
+                    <span id="coordStatus">RDF→BabylonJS (Y翻转)</span>
+                </div>
+
+                <div class="pose-setter">
+                    <strong>相机位姿设置</strong>
+                    <small>RDF坐标系 (X右Y下Z前)</small>
+                    <label>位置:</label>
+                    X:<input type="number" id="posX" step="0.1" placeholder="0">
+                    Y:<input type="number" id="posY" step="0.1" placeholder="0">
+                    Z:<input type="number" id="posZ" step="0.1" placeholder="0">
+
+                    <label>四元数:</label>
+                    X:<input type="number" id="quatX" step="0.001" placeholder="0">
+                    Y:<input type="number" id="quatY" step="0.001" placeholder="0">
+                    Z:<input type="number" id="quatZ" step="0.001" placeholder="0">
+                    W:<input type="number" id="quatW" step="0.001" placeholder="1">
+
+                    <button onclick="window.viewer && window.viewer.setCameraPoseRDF()">
+                        ✓ 应用
+                    </button>
+                    <button onclick="window.viewer && window.viewer.getCurrentPoseToInputs()">
+                        ← 获取
+                    </button>
+                </div>
+
+                <div id="anchorControls"
+                    style="display: none; margin-top: 8px; border-top: 1px solid #555; padding-top: 8px;">
+                    <strong style="font-size: 10px;">坐标锚点:</strong>
+                    <button onclick="window.viewer && window.viewer.toggleAnchorMode()" id="anchorModeBtn" style="font-size: 9px;">
+                        🧷 Anchor Mode: Off
+                    </button>
+                    <button onclick="window.viewer && window.viewer.confirmAnchorCandidate()" id="anchorConfirmBtn"
+                        style="font-size: 9px;">
+                        ✓ 确认候选点
+                    </button>
+                    <button onclick="window.viewer && window.viewer.clearAnchorPlacement()" id="anchorClearBtn"
+                        style="font-size: 9px;">
+                        ✕ 清除锚点
+                    </button>
+                    <div class="section-note" id="anchorGuide" style="margin-top: 4px;">
+                        先把相机调到期望朝向，再进入 Anchor Mode。单指点选候选点，单指长按确认；双指仍可平移和缩放。
+                    </div>
+                    <button onclick="document.getElementById('anchorFile').click()" style="font-size: 9px;">
+                        📥 载入锚点文件
+                    </button>
+                    <button onclick="window.viewer && window.viewer.saveCurrentPoseAsAnchorFile()"
+                        style="font-size: 9px;">
+                        💾 导出锚点文件
+                    </button>
+                    <input type="file" id="anchorFile" accept=".tum,.txt" style="display:none" />
+                    <br>
+                    <span id="anchorStatus" style="font-size: 9px; color: #ccc;">锚点: 原始位置</span>
+                </div>
+
+                <div class="camera-info" id="cameraInfo">
+                    Position: (0, 0, 0)<br>
+                    Target: (0, 0, 0)<br>
+                    <strong>FreeCamera控制:</strong><br>
+                    <small>单指旋转 · 双指平移 · 捏合缩放 · 双击聚焦</small><br>
+                    <small>桌面模式保留鼠标/键盘用于调试</small><br>
+                    <span id="keyboardStatus" style="font-size: 9px; color: #0f0;">键盘控制: 启用</span>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <div class="camera-toolbar">
+        <div class="camera-toolbar-main">
+            <button class="camera-chip" id="cameraModeExplore" onclick="window.viewer && window.viewer.activateExploreCamera()">
+                Explore
+            </button>
+            <button class="camera-chip" id="cameraModeFocus" onclick="window.viewer && window.viewer.framePreferredTarget()">
+                Focus
+            </button>
+            <button class="camera-chip" id="cameraModeTop" onclick="window.viewer && window.viewer.setExploreView('top')">
+                Top
+            </button>
+            <button class="camera-chip" id="cameraModeFront" onclick="window.viewer && window.viewer.setExploreView('front')">
+                Front
+            </button>
+            <button class="camera-chip" id="cameraModeReset" onclick="window.viewer && window.viewer.resetExploreCamera()">
+                Reset
+            </button>
+        </div>
+        <div class="camera-toolbar-hint" id="interactionHint">
+            单指旋转 · 双指平移 · 捏合缩放 · 双击聚焦
+        </div>
+    </div>
+
+    <div class="status" id="status">
+        <div class="status-primary" id="statusPrimary">
+            Ready - 等待 Android 场景请求或手动加载 .splat / .spz / .ply 文件
+        </div>
+        <div class="status-meta" id="statusMeta">
+            Scene: none · Trajectory: none
+        </div>
+    </div>
+
+    <script src="./js/babylon.js"></script>
+    <script src="./js/babylonjs.loaders.min.js"></script>
+
+    <script>
+        function toggleControls() {
+            const panel = document.getElementById('controlPanel');
+            const toggleBtn = panel.querySelector('.toggle-btn');
+
+            if (panel.classList.contains('collapsed')) {
+                panel.classList.remove('collapsed');
+                toggleBtn.textContent = '▼';
+            } else {
+                panel.classList.add('collapsed');
+                toggleBtn.textContent = '▶';
+            }
+        }
+    </script>
+
+    <script>
+        window.__sceneViewerPendingRequest = null;
+        window.RecomoSceneViewer = {
+            load(payload) {
+                window.__sceneViewerPendingRequest = payload || null;
+                if (window.viewer && typeof window.viewer.applyLaunchRequest === 'function') {
+                    window.viewer.applyLaunchRequest(payload);
+                }
+            }
+        };
+
+        function buildRequestFromQueryString() {
+            // Build a SceneViewerLaunchRequest-shaped payload from URL query params.
+            // Returns null if no meaningful params are present.
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const scene = params.get('scene');
+                const trajectory = params.get('trajectory');
+                const anchor = params.get('anchor');
+                const anchorTum = params.get('anchorTum');
+                const title = params.get('title');
+                const frameHint = params.get('frame');
+                if (!scene && !trajectory) return null;
+
+                const payload = { entrySource: 'QueryString' };
+                if (title) payload.title = title;
+                if (frameHint) payload.frameHint = frameHint;
+                if (scene) {
+                    payload.scene = {
+                        type: 'remote_url',
+                        url: scene,
+                        name: title || scene.split('/').pop() || 'scene'
+                    };
+                }
+                if (trajectory) {
+                    payload.trajectory = {
+                        type: 'remote_url',
+                        url: trajectory,
+                        name: (trajectory.split('/').pop() || 'trajectory').replace(/\.[^.]+$/, '')
+                    };
+                }
+                if (anchor) {
+                    try {
+                        payload.anchor = JSON.parse(decodeURIComponent(anchor));
+                    } catch (err) {
+                        console.warn('[SceneViewer] invalid anchor query param:', anchor, err);
+                    }
+                }
+                if (anchorTum) {
+                    // URL of a single-line TUM file containing the anchor pose.
+                    // Viewer will fetch and apply via applyAnchorPose — same code
+                    // path as the manual "Load anchor TUM" button.
+                    payload.anchorTumUrl = anchorTum;
+                }
+                return payload;
+            } catch (err) {
+                console.warn('[SceneViewer] failed to parse query string:', err);
+                return null;
+            }
+        }
+
+        window.addEventListener('load', () => {
+            if (typeof BABYLON === 'undefined') {
+                const statusPrimary = document.getElementById('statusPrimary');
+                if (statusPrimary) {
+                    statusPrimary.innerText = 'BabylonJS 加载失败，请检查网络连接';
+                }
+                return;
+            }
+            const viewer = new GaussianViewer();
+            // Priority: explicit Android load() call > pending request > URL query params
+            if (window.__sceneViewerPendingRequest) {
+                viewer.applyLaunchRequest(window.__sceneViewerPendingRequest);
+            } else {
+                const queryRequest = buildRequestFromQueryString();
+                if (queryRequest) {
+                    viewer.applyLaunchRequest(queryRequest);
+                }
+            }
+        });
+
+        class GaussianViewer {
+            constructor() {
+                this.canvas = document.getElementById('renderCanvas');
+                this.statusDiv = document.getElementById('status');
+                this.statusPrimaryDiv = document.getElementById('statusPrimary');
+                this.statusMetaDiv = document.getElementById('statusMeta');
+                this.cameraInfoDiv = document.getElementById('cameraInfo');
+                this.launchRequest = null;
+                this.statusMessage = 'Ready - 等待 Android 场景请求或手动加载 .splat / .spz / .ply 文件';
+
+                this.ZERO_VECTOR = new BABYLON.Vector3(0, 0, 0);
+                this.IDENTITY_QUAT = new BABYLON.Quaternion(0, 0, 0, 1);
+
+                this.engine = null;
+                this.scene = null;
+                this.camera = null;
+                this.poseCamera = null; // 专用姿态相机（FreeCamera）
+                this.currentMesh = null;
+
+                this.tumTrajectory = [];
+                this.originalTrajectory = []; // 保存原始轨迹
+                this.isPlaying = false;
+                this.currentFrame = 0;
+                this.playSpeed = 1.0;
+                this.trajectoryScale = 1.0; // 轨迹尺度
+                this.playInterval = null;
+
+                this.anchorSet = false;
+                this.anchorPosition = this.ZERO_VECTOR.clone();
+                this.anchorQuaternion = this.IDENTITY_QUAT.clone();
+                this.anchorModeEnabled = false;
+                this.anchorCandidatePosition = null;
+                this.anchorCandidateSource = '';
+                this.anchorMarker = null;
+                this.anchorMarkerMaterial = null;
+                this.originalFirstFrame = null; // 保存原始第一帧
+                // Sticky anchor — once set (e.g. via launch request), reapplied
+                // automatically whenever a new trajectory is loaded so the scene
+                // stays right-side-up regardless of how the trajectory came in.
+                this.stickyAnchorPose = null;
+
+                this.isTouchPrimary = window.matchMedia('(pointer: coarse)').matches ||
+                    (navigator.maxTouchPoints || 0) > 0;
+                this.keyboardState = {};
+                this.keyboardControlEnabled = !this.isTouchPrimary;
+                this.movementSpeed = 0.1;      // 移动速度
+                this.rotationSpeed = 1.0;      // 旋转速度 (度)
+                this.keyboardInterval = null;  // 键盘控制定时器
+
+                this.mouseInvertEnabled = false; // 鼠标反转控制
+                this.lookSensitivity = 0.004;
+                this.touchLookSensitivity = 0.005;
+                this.mousePanSensitivity = 0.005;
+                this.touchPanSensitivity = 0.0075;
+                this.touchZoomSensitivity = 0.012;
+                this.mouseWheelSensitivity = 0.18;
+                this.pointerState = {
+                    pointers: new Map(),
+                    mouseMode: null,
+                    lastTapAt: 0,
+                    lastTapPoint: null,
+                    touchSnapshot: null,
+                    anchorLongPressTimer: null,
+                    anchorTouchStart: null,
+                    anchorLongPressTriggered: false
+                };
+                this.defaultCameraState = null;
+                this.activeCameraPreset = 'explore';
+                this.sceneState = {
+                    loaded: false,
+                    name: '',
+                    vertices: 0,
+                    sourceLabel: '',
+                    pending: false
+                };
+                this.trajectoryState = {
+                    loaded: false,
+                    frameCount: 0,
+                    durationSec: 0,
+                    sourceLabel: '',
+                    pending: false
+                };
+
+                this.isQuaternionInitialized = false;
+                this.usingPoseCamera = false; // 是否使用姿态相机
+                this.playOffsetPos = this.ZERO_VECTOR.clone();
+                this.playOffsetQuat = this.IDENTITY_QUAT.clone();
+                this.playOffsetReady = false;
+
+                this.frameCount = 0;
+                this.lastFPSUpdate = performance.now();
+                this.currentFPS = 0;
+
+                this.init();
+
+                window.viewer = this;
+            }
+
+            diagnoseWebGL() {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (!gl) {
+                    console.error('WebGL不可用');
+                    return;
+                }
+            }
+
+            activatePoseCamera() {
+                this.switchToCamera(true);
+            }
+
+            deactivatePoseCamera() {
+                this.switchToCamera(false);
+            }
+
+            init() {
+                try {
+                    this.diagnoseWebGL();
+
+                    this.engine = new BABYLON.Engine(this.canvas, true, {
+                        preserveDrawingBuffer: true,
+                        stencil: true,
+                        disableWebGL2Support: false
+                    });
+
+                    this.scene = new BABYLON.Scene(this.engine);
+                    this.scene.clearColor = new BABYLON.Color3(0.05, 0.05, 0.1);
+
+                    this.setupCamera();
+                    this.setupAnchorVisualization();
+
+                    this.setupKeyboardControls();
+
+                    this.setupEventListeners();
+                    this.syncInteractionUi();
+
+                    const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), this.scene);
+                    light.intensity = 0.7;
+
+                    this.engine.runRenderLoop(() => {
+                        this.scene.render();
+                        this.updateCameraInfo();
+                        this.updatePerformanceInfo();
+                    });
+
+                    this.updateStatus('BabylonJS 引擎初始化成功，等待场景或本地文件');
+
+                } catch (error) {
+                    this.updateStatus(`初始化失败: ${error.message}`);
+                }
+            }
+
+            setupCamera() {
+                this.createFreeCamera();
+                this.createPoseCamera(); // 保留作为备用
+            }
+
+            // === 相机管理工具函数 ===
+
+            configureFreeCamera(camera, options = {}) {
+                Object.assign(camera, {
+                    minZ: 0.1, maxZ: 100000, fov: options.fov || Math.PI / 3,
+                    inertia: 0, angularSensibility: -1000,
+                    rotationQuaternion: this.IDENTITY_QUAT.clone(), ...options
+                });
+            }
+
+            createFreeCamera() {
+                this.camera = new BABYLON.FreeCamera("camera", new BABYLON.Vector3(0, 0, -10), this.scene);
+
+                this.configureFreeCamera(this.camera);
+
+                this.setupFreeCameraControls();
+            }
+
+            setupFreeCameraControls() {
+                this.camera.inputs.clear();
+                this.setupUnifiedPointerControls();
+            }
+
+            createPoseCamera() {
+                this.poseCamera = new BABYLON.FreeCamera("poseCamera", this.camera.position.clone(), this.scene);
+                this.configureFreeCamera(this.poseCamera, {
+                    fov: this.camera.fov,
+                    isIntermediate: true
+                });
+            }
+
+            switchToCamera(usePoseCamera) {
+                if (!this.scene) return;
+
+                if (usePoseCamera && this.poseCamera) {
+                    this.poseCamera.fov = this.camera ? this.camera.fov : this.poseCamera.fov;
+                    this.scene.activeCamera = this.poseCamera;
+                    this.usingPoseCamera = true;
+                } else if (this.camera) {
+                    this.scene.activeCamera = this.camera;
+                    this.usingPoseCamera = false;
+                }
+            }
+
+            updateMouseSensitivity() {
+                const factor = this.mouseInvertEnabled ? -1 : 1;
+                this.lookSensitivity = 0.004 * factor;
+                this.touchLookSensitivity = 0.005 * factor;
+            }
+
+            setupAnchorVisualization() {
+                if (!this.scene || this.anchorMarker) return;
+
+                this.anchorMarker = BABYLON.MeshBuilder.CreateSphere('anchorMarker', {
+                    diameter: 0.28,
+                    segments: 16
+                }, this.scene);
+                this.anchorMarkerMaterial = new BABYLON.StandardMaterial('anchorMarkerMaterial', this.scene);
+                this.anchorMarkerMaterial.disableLighting = true;
+                this.anchorMarkerMaterial.emissiveColor = new BABYLON.Color3(1.0, 0.74, 0.18);
+                this.anchorMarker.material = this.anchorMarkerMaterial;
+                this.anchorMarker.isPickable = false;
+                this.anchorMarker.setEnabled(false);
+            }
+
+            isPlaybackCameraLocked() {
+                return this.isPlaying && this.usingPoseCamera;
+            }
+
+            resetTrajectoryPlaybackRuntime(options = {}) {
+                const { resetFrame = false } = options;
+
+                this.isPlaying = false;
+                if (this.playInterval) {
+                    clearTimeout(this.playInterval);
+                    this.playInterval = null;
+                }
+
+                this.deactivatePoseCamera();
+                this.playOffsetPos = this.ZERO_VECTOR.clone();
+                this.playOffsetQuat = this.IDENTITY_QUAT.clone();
+                this.playOffsetReady = false;
+
+                if (resetFrame) {
+                    this.currentFrame = 0;
+                }
+            }
+
+            clearTrajectoryData() {
+                this.resetTrajectoryPlaybackRuntime({ resetFrame: true });
+                this.tumTrajectory = [];
+                this.originalTrajectory = [];
+                this.originalFirstFrame = null;
+                this.anchorSet = false;
+                this.anchorPosition = this.ZERO_VECTOR.clone();
+                this.anchorQuaternion = this.IDENTITY_QUAT.clone();
+                this.anchorCandidatePosition = null;
+                this.anchorCandidateSource = '';
+                this.anchorModeEnabled = false;
+                this.cancelAnchorLongPress();
+                this.trajectoryState = {
+                    loaded: false,
+                    frameCount: 0,
+                    durationSec: 0,
+                    sourceLabel: '',
+                    pending: false
+                };
+
+                const progressSlider = document.getElementById('progressSlider');
+                if (progressSlider) {
+                    progressSlider.value = 0;
+                    progressSlider.max = 0;
+                }
+
+                const anchorStatus = document.getElementById('anchorStatus');
+                if (anchorStatus) {
+                    anchorStatus.textContent = '锚点: 原始位置';
+                }
+
+                this.updateAnchorVisualization();
+                this.updateProgressLabel();
+                this.syncInteractionUi();
+            }
+
+            cancelAnchorLongPress() {
+                if (this.pointerState.anchorLongPressTimer) {
+                    clearTimeout(this.pointerState.anchorLongPressTimer);
+                    this.pointerState.anchorLongPressTimer = null;
+                }
+            }
+
+            startAnchorLongPress(event) {
+                this.cancelAnchorLongPress();
+                this.pointerState.anchorLongPressTriggered = false;
+                this.pointerState.anchorTouchStart = {
+                    pointerId: event.pointerId,
+                    x: event.clientX,
+                    y: event.clientY
+                };
+                this.pointerState.anchorLongPressTimer = setTimeout(() => {
+                    this.pointerState.anchorLongPressTimer = null;
+                    this.pointerState.anchorLongPressTriggered = true;
+                    if (!this.anchorCandidatePosition) {
+                        this.placeAnchorCandidateFromClientPoint(event.clientX, event.clientY, {
+                            silent: true
+                        });
+                    }
+                    this.confirmAnchorCandidate();
+                }, 520);
+            }
+
+            isAnchorCandidateReady() {
+                return !!this.anchorCandidatePosition;
+            }
+
+            getAnchorReferencePoint() {
+                if (this.anchorCandidatePosition) {
+                    return this.anchorCandidatePosition.clone();
+                }
+                if (this.anchorSet) {
+                    const { babylonPos } = this.computeBabylonPoseFromRDF(
+                        {
+                            x: this.anchorPosition.x,
+                            y: this.anchorPosition.y,
+                            z: this.anchorPosition.z
+                        },
+                        {
+                            x: this.anchorQuaternion.x,
+                            y: this.anchorQuaternion.y,
+                            z: this.anchorQuaternion.z,
+                            w: this.anchorQuaternion.w
+                        }
+                    );
+                    return babylonPos;
+                }
+                return null;
+            }
+
+            updateAnchorVisualization() {
+                if (!this.anchorMarker || !this.anchorMarkerMaterial) return;
+
+                const markerPosition = this.getAnchorReferencePoint();
+                if (!markerPosition) {
+                    this.anchorMarker.setEnabled(false);
+                    return;
+                }
+
+                this.anchorMarker.position.copyFrom(markerPosition);
+                const markerScale = Math.max(0.18, this.getReferenceDistance() * 0.03);
+                this.anchorMarker.scaling = new BABYLON.Vector3(markerScale, markerScale, markerScale);
+                this.anchorMarkerMaterial.emissiveColor = this.anchorSet
+                    ? new BABYLON.Color3(0.28, 0.92, 0.56)
+                    : new BABYLON.Color3(1.0, 0.74, 0.18);
+                this.anchorMarker.setEnabled(true);
+            }
+
+            updateAnchorStatusLabel(label) {
+                const anchorStatus = document.getElementById('anchorStatus');
+                if (anchorStatus) {
+                    anchorStatus.textContent = label;
+                }
+            }
+
+            getCanvasPointerPosition(clientX, clientY) {
+                const rect = this.canvas.getBoundingClientRect();
+                return {
+                    x: clientX - rect.left,
+                    y: clientY - rect.top
+                };
+            }
+
+            resolveAnchorPlacement(clientX, clientY) {
+                if (!this.scene) return null;
+
+                const pointer = this.getCanvasPointerPosition(clientX, clientY);
+                const pickInfo = this.scene.pick(
+                    pointer.x,
+                    pointer.y,
+                    (mesh) => mesh && mesh.isPickable !== false && mesh !== this.anchorMarker,
+                    false,
+                    this.getActiveCamera()
+                );
+
+                if (pickInfo && pickInfo.hit && pickInfo.pickedPoint) {
+                    return {
+                        position: pickInfo.pickedPoint.clone(),
+                        source: 'scene pick'
+                    };
+                }
+
+                const trajectoryFocus = this.getTrajectoryFocusPoint();
+                if (trajectoryFocus) {
+                    return {
+                        position: trajectoryFocus.clone(),
+                        source: 'trajectory fallback'
+                    };
+                }
+
+                const meshBounds = this.getCurrentMeshBounds();
+                if (meshBounds) {
+                    return {
+                        position: meshBounds.center.clone(),
+                        source: 'scene center fallback'
+                    };
+                }
+
+                return null;
+            }
+
+            placeAnchorCandidateFromClientPoint(clientX, clientY, options = {}) {
+                const { silent = false } = options;
+                const placement = this.resolveAnchorPlacement(clientX, clientY);
+                if (!placement) {
+                    if (!silent) {
+                        this.updateStatus('当前没有可放置锚点的场景参考，请先加载 scene 或 trajectory');
+                    }
+                    return false;
+                }
+
+                this.anchorCandidatePosition = placement.position.clone();
+                this.anchorCandidateSource = placement.source;
+                this.updateAnchorVisualization();
+
+                const rdfPosition = this.babylonToRDF(
+                    this.anchorCandidatePosition,
+                    this.IDENTITY_QUAT.clone()
+                ).position;
+                const sourceLabel = placement.source === 'scene pick'
+                    ? '点选场景'
+                    : placement.source === 'trajectory fallback'
+                        ? '轨迹回退点'
+                        : '场景中心回退点';
+                this.updateAnchorStatusLabel(
+                    `候选锚点: (${rdfPosition.x.toFixed(2)}, ${rdfPosition.y.toFixed(2)}, ${rdfPosition.z.toFixed(2)}) · ${sourceLabel}`
+                );
+                this.syncInteractionUi();
+                if (!silent) {
+                    this.updateStatus(`已放置锚点候选（${sourceLabel}）。长按确认，或点击“确认候选点”应用当前相机朝向。`);
+                }
+                return true;
+            }
+
+            applyAnchorPose(anchorRdfPosition, anchorRdfQuaternion, statusMessage) {
+                this.anchorPosition = new BABYLON.Vector3(
+                    anchorRdfPosition.x,
+                    anchorRdfPosition.y,
+                    anchorRdfPosition.z
+                );
+                this.anchorQuaternion = new BABYLON.Quaternion(
+                    anchorRdfQuaternion.x,
+                    anchorRdfQuaternion.y,
+                    anchorRdfQuaternion.z,
+                    anchorRdfQuaternion.w
+                );
+                this.normalizeQuaternion(this.anchorQuaternion);
+                this.anchorSet = true;
+                this.anchorModeEnabled = false;
+                this.anchorCandidatePosition = null;
+                this.anchorCandidateSource = '';
+                this.updateAnchorVisualization();
+                this.updateAnchorStatusLabel(
+                    `锚点: (${anchorRdfPosition.x.toFixed(2)}, ${anchorRdfPosition.y.toFixed(2)}, ${anchorRdfPosition.z.toFixed(2)})`
+                );
+
+                if (this.originalTrajectory.length > 0) {
+                    this.recalculateTrajectoryWithAnchor();
+                }
+
+                this.syncInteractionUi();
+                this.updateStatus(statusMessage);
+            }
+
+            confirmAnchorCandidate() {
+                if (!this.anchorCandidatePosition) {
+                    this.updateStatus('还没有锚点候选，先进入 Anchor Mode 后单指点选一个位置');
+                    return false;
+                }
+
+                const camera = this.camera || this.getActiveCamera();
+                if (!camera) {
+                    this.updateStatus('相机未初始化，无法确认锚点');
+                    return false;
+                }
+
+                const cameraQuat = this.getCameraRotationQuaternion(camera);
+                const rdfPose = this.babylonToRDF(this.anchorCandidatePosition, cameraQuat);
+                this.applyAnchorPose(
+                    rdfPose.position,
+                    rdfPose.quaternion,
+                    '锚点已确认，已使用当前相机朝向作为 anchor orientation'
+                );
+                return true;
+            }
+
+            clearAnchorPlacement() {
+                this.anchorSet = false;
+                this.anchorPosition = this.ZERO_VECTOR.clone();
+                this.anchorQuaternion = this.IDENTITY_QUAT.clone();
+                this.anchorCandidatePosition = null;
+                this.anchorCandidateSource = '';
+                this.anchorModeEnabled = false;
+                this.cancelAnchorLongPress();
+                this.updateAnchorVisualization();
+                this.updateAnchorStatusLabel('锚点: 原始位置');
+
+                if (this.originalTrajectory.length > 0) {
+                    this.anchorSet = false;
+                    if (this.trajectoryScale !== 1.0) {
+                        this.applyTrajectoryScale();
+                    } else {
+                        this.tumTrajectory = JSON.parse(JSON.stringify(this.originalTrajectory));
+                    }
+                    if (this.tumTrajectory.length > 0) {
+                        this.applyTUMFrame(0);
+                    }
+                }
+
+                this.syncInteractionUi();
+                this.updateStatus('已清除锚点和候选点');
+            }
+
+            toggleAnchorMode() {
+                if (this.isPlaybackCameraLocked()) {
+                    this.updateStatus('轨迹播放中，先暂停或停止后再进入 Anchor Mode');
+                    return;
+                }
+
+                if (!this.sceneState.loaded && !this.trajectoryState.loaded) {
+                    this.updateStatus('当前没有 scene 或 trajectory，无法进入 Anchor Mode');
+                    return;
+                }
+
+                this.anchorModeEnabled = !this.anchorModeEnabled;
+                this.cancelAnchorLongPress();
+                this.pointerState.anchorLongPressTriggered = false;
+                this.pointerState.anchorTouchStart = null;
+                this.syncInteractionUi();
+                this.updateStatus(
+                    this.anchorModeEnabled
+                        ? 'Anchor Mode 已开启。单指点选候选点，长按确认；双指继续平移和缩放。'
+                        : 'Anchor Mode 已关闭，恢复普通浏览手势。'
+                );
+            }
+
+            applySectionPillState(element, text, tone) {
+                if (!element) return;
+                element.textContent = text;
+                element.classList.remove('is-empty', 'is-ready', 'is-pending', 'is-playing');
+                element.classList.add(tone || 'is-empty');
+            }
+
+            getDisplayNameFromUrl(url, fallback = 'asset') {
+                if (!url) return fallback;
+                try {
+                    const withoutQuery = url.split('?')[0];
+                    const rawName = withoutQuery.split('/').pop();
+                    return decodeURIComponent(rawName || fallback);
+                } catch (error) {
+                    return fallback;
+                }
+            }
+
+            guardManualCameraInteraction(actionLabel = '调整视角') {
+                if (!this.isPlaybackCameraLocked()) {
+                    return false;
+                }
+                this.updateStatus(`轨迹播放中，先暂停或停止后再${actionLabel}`);
+                return true;
+            }
+
+            setupUnifiedPointerControls() {
+                this.canvas.addEventListener('pointerdown', (event) => this.handlePointerDown(event));
+                this.canvas.addEventListener('pointermove', (event) => this.handlePointerMove(event));
+                this.canvas.addEventListener('pointerup', (event) => this.handlePointerUp(event));
+                this.canvas.addEventListener('pointercancel', (event) => this.handlePointerUp(event));
+                this.canvas.addEventListener('wheel', (event) => {
+                    if (this.isPlaybackCameraLocked()) return;
+                    this.activeCameraPreset = 'explore';
+                    this.syncInteractionUi();
+                    const zoomStep = event.deltaY > 0 ? -1 : 1;
+                    this.zoomExploreCamera(zoomStep, this.mouseWheelSensitivity);
+                    event.preventDefault();
+                }, { passive: false });
+                this.canvas.addEventListener('contextmenu', (event) => {
+                    event.preventDefault();
+                });
+            }
+
+            handlePointerDown(event) {
+                if (!this.camera || this.isPlaybackCameraLocked()) {
+                    return;
+                }
+
+                this.pointerState.pointers.set(event.pointerId, {
+                    x: event.clientX,
+                    y: event.clientY,
+                    type: event.pointerType
+                });
+
+                if (event.pointerType === 'mouse') {
+                    if (event.button === 0) {
+                        this.pointerState.mouseMode = 'rotate';
+                    } else if (event.button === 1 || event.button === 2) {
+                        this.pointerState.mouseMode = 'pan';
+                    }
+                } else if (event.pointerType === 'touch') {
+                    const touchCount = this.getActiveTouchPointers().length;
+                    if (touchCount >= 2) {
+                        this.cancelAnchorLongPress();
+                        this.pointerState.touchSnapshot = this.captureTouchSnapshot();
+                    } else {
+                        this.pointerState.touchSnapshot = null;
+                        if (this.anchorModeEnabled) {
+                            this.startAnchorLongPress(event);
+                        }
+                    }
+                }
+
+                this.activeCameraPreset = 'explore';
+                this.syncInteractionUi();
+
+                if (event.pointerType === 'touch') {
+                    event.preventDefault();
+                }
+            }
+
+            handlePointerMove(event) {
+                const tracked = this.pointerState.pointers.get(event.pointerId);
+                if (!tracked || !this.camera || this.isPlaybackCameraLocked()) {
+                    return;
+                }
+
+                const prevX = tracked.x;
+                const prevY = tracked.y;
+                tracked.x = event.clientX;
+                tracked.y = event.clientY;
+
+                if (event.pointerType === 'mouse') {
+                    const deltaX = tracked.x - prevX;
+                    const deltaY = tracked.y - prevY;
+                    if (this.pointerState.mouseMode === 'rotate') {
+                        this.rotateExploreCamera(deltaX, deltaY, this.lookSensitivity);
+                    } else if (this.pointerState.mouseMode === 'pan') {
+                        this.panExploreCamera(deltaX, deltaY, this.mousePanSensitivity);
+                    }
+                    if (this.pointerState.mouseMode) {
+                        event.preventDefault();
+                    }
+                    return;
+                }
+
+                if (event.pointerType !== 'touch') {
+                    return;
+                }
+
+                const touches = this.getActiveTouchPointers();
+                if (touches.length === 1) {
+                    this.pointerState.touchSnapshot = null;
+                    if (this.anchorModeEnabled) {
+                        const anchorTouchStart = this.pointerState.anchorTouchStart;
+                        if (anchorTouchStart) {
+                            const distance = Math.hypot(tracked.x - anchorTouchStart.x, tracked.y - anchorTouchStart.y);
+                            if (distance > 12) {
+                                this.cancelAnchorLongPress();
+                            }
+                        }
+                    } else {
+                        this.rotateExploreCamera(tracked.x - prevX, tracked.y - prevY, this.touchLookSensitivity);
+                    }
+                } else if (touches.length >= 2) {
+                    this.cancelAnchorLongPress();
+                    const currentSnapshot = this.captureTouchSnapshot();
+                    if (this.pointerState.touchSnapshot) {
+                        const deltaCenterX = currentSnapshot.centerX - this.pointerState.touchSnapshot.centerX;
+                        const deltaCenterY = currentSnapshot.centerY - this.pointerState.touchSnapshot.centerY;
+                        const pinchDelta = currentSnapshot.distance - this.pointerState.touchSnapshot.distance;
+                        this.panExploreCamera(deltaCenterX, deltaCenterY, this.touchPanSensitivity);
+                        this.zoomExploreCamera(pinchDelta, this.touchZoomSensitivity);
+                    }
+                    this.pointerState.touchSnapshot = currentSnapshot;
+                }
+
+                event.preventDefault();
+            }
+
+            handlePointerUp(event) {
+                const tracked = this.pointerState.pointers.get(event.pointerId);
+                if (tracked && tracked.type === 'touch') {
+                    const longPressTriggered = this.pointerState.anchorLongPressTriggered;
+                    this.cancelAnchorLongPress();
+                    this.pointerState.anchorTouchStart = null;
+                    this.pointerState.anchorLongPressTriggered = false;
+                    if (!longPressTriggered) {
+                        this.handleTouchTap(event, tracked);
+                    }
+                }
+
+                this.pointerState.pointers.delete(event.pointerId);
+                if (event.pointerType === 'mouse') {
+                    this.pointerState.mouseMode = null;
+                }
+
+                const remainingTouches = this.getActiveTouchPointers().length;
+                this.pointerState.touchSnapshot = remainingTouches >= 2 ? this.captureTouchSnapshot() : null;
+            }
+
+            handleTouchTap(event, trackedPointer) {
+                const remainingTouches = this.getActiveTouchPointers().length;
+                if (remainingTouches > 1) return;
+
+                if (this.anchorModeEnabled) {
+                    if (this.placeAnchorCandidateFromClientPoint(trackedPointer.x, trackedPointer.y)) {
+                        event.preventDefault();
+                    }
+                    return;
+                }
+
+                const now = performance.now();
+                const point = { x: trackedPointer.x, y: trackedPointer.y };
+                const lastPoint = this.pointerState.lastTapPoint;
+                const lastTapAt = this.pointerState.lastTapAt;
+                const movedDistance = lastPoint
+                    ? Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y)
+                    : Number.POSITIVE_INFINITY;
+
+                if (lastPoint && (now - lastTapAt) < 320 && movedDistance < 28) {
+                    this.framePreferredTarget();
+                    this.updateStatus('已聚焦当前场景');
+                    this.pointerState.lastTapAt = 0;
+                    this.pointerState.lastTapPoint = null;
+                    event.preventDefault();
+                    return;
+                }
+
+                this.pointerState.lastTapAt = now;
+                this.pointerState.lastTapPoint = point;
+            }
+
+            getActiveTouchPointers() {
+                return Array.from(this.pointerState.pointers.values()).filter(pointer => pointer.type === 'touch');
+            }
+
+            captureTouchSnapshot() {
+                const touches = this.getActiveTouchPointers().slice(0, 2);
+                if (touches.length < 2) return null;
+                const [first, second] = touches;
+                return {
+                    centerX: (first.x + second.x) / 2,
+                    centerY: (first.y + second.y) / 2,
+                    distance: Math.hypot(second.x - first.x, second.y - first.y)
+                };
+            }
+
+            rotateExploreCamera(deltaX, deltaY, sensitivity) {
+                if (!this.camera) return;
+                if (!this.camera.rotationQuaternion) {
+                    this.camera.rotationQuaternion = this.IDENTITY_QUAT.clone();
+                }
+
+                const yawQuat = BABYLON.Quaternion.FromRotationAxis(
+                    BABYLON.Vector3.Up(),
+                    -deltaX * sensitivity
+                );
+                const rightAxis = this.camera.getDirection(BABYLON.Vector3.Right());
+                const pitchQuat = BABYLON.Quaternion.FromRotationAxis(
+                    rightAxis,
+                    -deltaY * sensitivity
+                );
+
+                this.camera.rotationQuaternion = yawQuat.multiply(this.camera.rotationQuaternion);
+                this.camera.rotationQuaternion = this.camera.rotationQuaternion.multiply(pitchQuat);
+                this.normalizeQuaternion(this.camera.rotationQuaternion);
+            }
+
+            panExploreCamera(deltaX, deltaY, sensitivity) {
+                if (!this.camera) return;
+                const right = this.camera.getDirection(BABYLON.Vector3.Right());
+                const up = this.camera.getDirection(BABYLON.Vector3.Up());
+                const distance = this.getReferenceDistance();
+                const panScale = Math.max(0.0025, distance * sensitivity * 0.01);
+                this.camera.position.addInPlace(right.scale(-deltaX * panScale));
+                this.camera.position.addInPlace(up.scale(deltaY * panScale));
+            }
+
+            zoomExploreCamera(delta, sensitivity) {
+                if (!this.camera) return;
+                const forward = this.camera.getDirection(BABYLON.Vector3.Forward());
+                const distance = this.getReferenceDistance();
+                const zoomScale = Math.max(0.04, distance * sensitivity * 0.02);
+                this.camera.position.addInPlace(forward.scale(delta * zoomScale));
+            }
+
+            getReferenceDistance() {
+                if (!this.camera) return 10;
+                const focus = this.getPreferredFocusPoint();
+                return Math.max(2, BABYLON.Vector3.Distance(this.camera.position, focus));
+            }
+
+            getPreferredFocusPoint() {
+                const trajectoryFocus = this.getTrajectoryFocusPoint();
+                if (trajectoryFocus) return trajectoryFocus;
+
+                const meshBounds = this.getCurrentMeshBounds();
+                if (meshBounds) return meshBounds.center;
+
+                return this.ZERO_VECTOR.clone();
+            }
+
+            getCurrentMeshBounds() {
+                if (!this.currentMesh) return null;
+                this.currentMesh.computeWorldMatrix(true);
+                const boundingInfo = this.currentMesh.getBoundingInfo();
+                if (!boundingInfo) return null;
+                const box = boundingInfo.boundingBox;
+                const center = box.centerWorld.clone();
+                const size = box.maximumWorld.subtract(box.minimumWorld);
+                const maxDimension = Math.max(size.x, size.y, size.z, 1);
+                return { center, maxDimension };
+            }
+
+            getTrajectoryFocusPoint() {
+                if (!this.tumTrajectory.length) return null;
+                const frame = this.tumTrajectory[this.currentFrame] || this.tumTrajectory[0];
+                const { babylonPos } = this.computeBabylonPoseFromRDF(
+                    { x: frame.position.x, y: frame.position.y, z: frame.position.z },
+                    { x: frame.quaternion.x, y: frame.quaternion.y, z: frame.quaternion.z, w: frame.quaternion.w }
+                );
+                return babylonPos;
+            }
+
+            setCameraPositionAndTarget(position, target) {
+                if (!this.camera) return;
+                this.switchToCamera(false);
+                this.camera.position.copyFrom(position);
+
+                const viewMatrix = BABYLON.Matrix.LookAtLH(position, target, BABYLON.Vector3.Up());
+                const worldMatrix = BABYLON.Matrix.Invert(viewMatrix);
+                const orientation = new BABYLON.Quaternion();
+                worldMatrix.decompose(undefined, orientation, undefined);
+                this.normalizeQuaternion(orientation);
+                this.camera.rotationQuaternion = orientation;
+            }
+
+            rememberDefaultCameraState() {
+                if (!this.camera) return;
+                this.defaultCameraState = {
+                    position: this.camera.position.clone(),
+                    rotationQuaternion: this.camera.rotationQuaternion
+                        ? this.camera.rotationQuaternion.clone()
+                        : this.IDENTITY_QUAT.clone()
+                };
+            }
+
+            activateExploreCamera() {
+                if (this.guardManualCameraInteraction('切回 Explore 模式')) return;
+                this.switchToCamera(false);
+                this.activeCameraPreset = 'explore';
+                this.syncInteractionUi();
+                this.updateStatus('Explore 模式已启用');
+            }
+
+            framePreferredTarget() {
+                if (this.guardManualCameraInteraction('聚焦场景')) return;
+                const focus = this.getPreferredFocusPoint();
+                const meshBounds = this.getCurrentMeshBounds();
+                const distance = meshBounds
+                    ? Math.max(3, meshBounds.maxDimension * 1.4)
+                    : this.getReferenceDistance();
+                const position = focus.add(new BABYLON.Vector3(distance * 0.65, distance * 0.3, -distance));
+                this.setCameraPositionAndTarget(position, focus);
+                this.activeCameraPreset = 'focus';
+                this.syncInteractionUi();
+            }
+
+            setExploreView(mode) {
+                if (this.guardManualCameraInteraction('切换预设视角')) return;
+                const focus = this.getPreferredFocusPoint();
+                const meshBounds = this.getCurrentMeshBounds();
+                const distance = meshBounds
+                    ? Math.max(3, meshBounds.maxDimension * 1.3)
+                    : this.getReferenceDistance();
+
+                let position;
+                if (mode === 'top') {
+                    position = focus.add(new BABYLON.Vector3(0, distance, 0.001));
+                } else {
+                    position = focus.add(new BABYLON.Vector3(0, distance * 0.12, -distance));
+                }
+
+                this.setCameraPositionAndTarget(position, focus);
+                this.activeCameraPreset = mode;
+                this.syncInteractionUi();
+                this.updateStatus(mode === 'top' ? '已切换到顶视角' : '已切换到前视角');
+            }
+
+            resetExploreCamera() {
+                if (this.guardManualCameraInteraction('重置 Explore 相机')) return;
+                this.switchToCamera(false);
+                if (this.defaultCameraState) {
+                    this.camera.position.copyFrom(this.defaultCameraState.position);
+                    this.camera.rotationQuaternion = this.defaultCameraState.rotationQuaternion.clone();
+                    this.activeCameraPreset = 'reset';
+                    this.syncInteractionUi();
+                    this.updateStatus('已重置相机');
+                    return;
+                }
+
+                this.framePreferredTarget();
+                this.updateStatus('已按当前场景重新聚焦');
+            }
+
+
+            setupEventListeners() {
+                window.addEventListener('resize', () => {
+                    this.engine.resize();
+                });
+
+                    document.getElementById('fileInput').addEventListener('change', (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            this.loadFile(file, {
+                                displayName: file.name,
+                                sourceLabel: '手动导入'
+                            });
+                            e.target.value = '';
+                        }
+                    });
+
+                const anchorFile = document.getElementById('anchorFile');
+                if (anchorFile) {
+                    anchorFile.addEventListener('change', (e) => {
+                        const file = e.target.files && e.target.files[0];
+                        if (file) {
+                            this.loadAnchorFromTUMFile(file);
+                            e.target.value = '';
+                        }
+                    });
+                }
+
+                const mouseInvertCheckbox = document.getElementById('mouseInvertCheckbox');
+                if (mouseInvertCheckbox) {
+                    mouseInvertCheckbox.addEventListener('change', (e) => {
+                        this.mouseInvertEnabled = e.target.checked;
+                        this.updateMouseSensitivity();
+                        this.updateStatus(`鼠标拖动方向${this.mouseInvertEnabled ? '已反转' : '已恢复默认'}`);
+                    });
+                }
+
+                this.setupTUMEventListeners();
+            }
+
+            syncInteractionUi() {
+                const playbackLocked = this.isPlaybackCameraLocked();
+                const hasVisualContext = this.sceneState.loaded || this.trajectoryState.loaded;
+                const anchorMode = this.anchorModeEnabled;
+                const anchorCandidateReady = this.isAnchorCandidateReady();
+
+                const hint = document.getElementById('interactionHint');
+                if (hint) {
+                    hint.textContent = playbackLocked
+                        ? '轨迹播放中，视角正在跟随回放。暂停或停止后再手动调整。'
+                        : anchorMode
+                            ? 'Anchor Mode: 单指点选候选点 · 单指长按确认 · 双指平移 / 捏合'
+                            : this.isTouchPrimary
+                                ? '单指旋转 · 双指平移 · 捏合缩放 · 双击聚焦'
+                                : '左键旋转 · 右键平移 · 滚轮缩放 · 键盘仅作调试';
+                }
+
+                const keyboardStatus = document.getElementById('keyboardStatus');
+                if (keyboardStatus) {
+                    keyboardStatus.textContent = `键盘控制: ${this.keyboardControlEnabled ? '启用' : '禁用'}`;
+                    keyboardStatus.style.color = this.keyboardControlEnabled ? '#0f0' : '#f00';
+                }
+
+                const keyboardToggle = document.getElementById('keyboardToggleBtn');
+                if (keyboardToggle) {
+                    keyboardToggle.textContent = this.keyboardControlEnabled
+                        ? '🎮 键盘控制: 开'
+                        : '🎮 键盘控制: 关';
+                    keyboardToggle.disabled = playbackLocked;
+                }
+
+                const inputModePill = document.getElementById('inputModePill');
+                this.applySectionPillState(
+                    inputModePill,
+                    playbackLocked
+                        ? 'Follow'
+                        : anchorMode
+                            ? 'Anchor'
+                            : (this.isTouchPrimary ? 'Touch' : 'Desktop'),
+                    playbackLocked
+                        ? 'is-playing'
+                        : anchorMode
+                            ? (anchorCandidateReady ? 'is-ready' : 'is-pending')
+                            : 'is-ready'
+                );
+
+                const interactionGuide = document.getElementById('interactionGuide');
+                if (interactionGuide) {
+                    interactionGuide.textContent = playbackLocked
+                        ? '轨迹播放时由回放相机接管视角。先暂停或停止，再做 Explore / Focus / Top / Front 调整。'
+                        : anchorMode
+                            ? 'Anchor Mode 下单指不再旋转视角。先把相机调到期望朝向，再点选候选点并长按确认；双指仍可平移和缩放。'
+                        : this.isTouchPrimary
+                            ? `${hasVisualContext ? '单指旋转 · 双指平移 · 捏合缩放 · 双击聚焦。' : '单指旋转 · 双指平移 · 捏合缩放。'}桌面键盘默认关闭。`
+                            : '左键旋转 · 右键平移 · 滚轮缩放。键盘仅保留给桌面调试。';
+                }
+
+                const mouseInvertRow = document.getElementById('mouseInvertRow');
+                if (mouseInvertRow) {
+                    mouseInvertRow.style.display = (this.isTouchPrimary || playbackLocked) ? 'none' : 'block';
+                }
+
+                const activeIdByPreset = {
+                    explore: 'cameraModeExplore',
+                    focus: 'cameraModeFocus',
+                    top: 'cameraModeTop',
+                    front: 'cameraModeFront',
+                    reset: 'cameraModeReset'
+                };
+                Object.values(activeIdByPreset).forEach((elementId) => {
+                    const element = document.getElementById(elementId);
+                    if (!element) return;
+                    element.classList.toggle('active', elementId === activeIdByPreset[this.activeCameraPreset]);
+                });
+
+                const cameraToolbar = document.querySelector('.camera-toolbar');
+                if (cameraToolbar) {
+                    cameraToolbar.classList.toggle('is-locked', playbackLocked);
+                }
+
+                const cameraButtonState = {
+                    cameraModeExplore: playbackLocked,
+                    cameraModeFocus: playbackLocked || !hasVisualContext,
+                    cameraModeTop: playbackLocked || !hasVisualContext,
+                    cameraModeFront: playbackLocked || !hasVisualContext,
+                    cameraModeReset: playbackLocked || !hasVisualContext
+                };
+                Object.entries(cameraButtonState).forEach(([elementId, disabled]) => {
+                    const element = document.getElementById(elementId);
+                    if (element) {
+                        element.disabled = disabled;
+                    }
+                });
+
+                const anchorModeBtn = document.getElementById('anchorModeBtn');
+                if (anchorModeBtn) {
+                    anchorModeBtn.textContent = anchorMode ? '🧷 Anchor Mode: On' : '🧷 Anchor Mode: Off';
+                    anchorModeBtn.disabled = playbackLocked || !hasVisualContext;
+                }
+
+                const anchorConfirmBtn = document.getElementById('anchorConfirmBtn');
+                if (anchorConfirmBtn) {
+                    anchorConfirmBtn.disabled = playbackLocked || !anchorCandidateReady;
+                }
+
+                const anchorClearBtn = document.getElementById('anchorClearBtn');
+                if (anchorClearBtn) {
+                    anchorClearBtn.disabled = playbackLocked || (!this.anchorSet && !anchorCandidateReady);
+                }
+
+                const anchorGuide = document.getElementById('anchorGuide');
+                if (anchorGuide) {
+                    anchorGuide.textContent = anchorMode
+                        ? 'Anchor Mode 已开启。单指点选候选点，单指长按确认；双指仍可平移和缩放。锚点朝向会取当前相机朝向。'
+                        : '先把相机调到期望朝向，再进入 Anchor Mode。单指点选候选点，单指长按确认；双指仍可平移和缩放。';
+                }
+
+                this.refreshPanelUi();
+            }
+
+            getActiveCamera() {
+                return (this.usingPoseCamera && this.poseCamera) ? this.poseCamera : this.camera;
+            }
+
+            refreshPanelUi() {
+                const sceneStatePill = document.getElementById('sceneStatePill');
+                this.applySectionPillState(
+                    sceneStatePill,
+                    this.sceneState.loaded ? 'Ready' : (this.sceneState.pending ? 'Pending' : 'No scene'),
+                    this.sceneState.loaded ? 'is-ready' : (this.sceneState.pending ? 'is-pending' : 'is-empty')
+                );
+
+                const sceneSummary = document.getElementById('sceneSummary');
+                if (sceneSummary) {
+                    sceneSummary.textContent = this.sceneState.loaded
+                        ? `${this.sceneState.name || 'scene asset'} · ${this.sceneState.vertices} vertices${this.sceneState.sourceLabel && this.sceneState.sourceLabel !== this.sceneState.name ? ` · ${this.sceneState.sourceLabel}` : ''}`
+                        : this.sceneState.pending
+                            ? `${this.sceneState.name || this.sceneState.sourceLabel || 'scene reference'} · 已收到场景引用，但还没有可访问的 .spz / .splat / .ply 资源。`
+                            : '等待 Android 注入场景，或手动加载 .spz / .splat / .ply 文件。';
+                }
+
+                const trajectoryStatePill = document.getElementById('trajectoryStatePill');
+                this.applySectionPillState(
+                    trajectoryStatePill,
+                    this.isPlaying
+                        ? 'Playing'
+                        : this.trajectoryState.loaded
+                            ? 'Ready'
+                            : (this.trajectoryState.pending ? 'Pending' : 'No trajectory'),
+                    this.isPlaying
+                        ? 'is-playing'
+                        : this.trajectoryState.loaded
+                            ? 'is-ready'
+                            : (this.trajectoryState.pending ? 'is-pending' : 'is-empty')
+                );
+
+                const trajectorySummary = document.getElementById('trajectorySummary');
+                if (trajectorySummary) {
+                    trajectorySummary.textContent = this.trajectoryState.loaded
+                        ? `${this.trajectoryState.frameCount} 帧 · ${this.trajectoryState.durationSec.toFixed(1)}s · frame ${Math.min(this.currentFrame + 1, this.trajectoryState.frameCount)}/${this.trajectoryState.frameCount} · scale ${this.trajectoryScale.toFixed(1)}x${this.anchorSet ? ' · anchored' : ''}${this.trajectoryState.sourceLabel ? ` · ${this.trajectoryState.sourceLabel}` : ''}`
+                        : this.trajectoryState.pending
+                            ? `${this.trajectoryState.sourceLabel || 'trajectory reference'} · 已收到引用，等待上游解析成可播放轨迹。`
+                            : '支持 Android 注入、JSON 转 TUM，或手动导入 .tum / .txt。';
+                }
+
+                const tumControls = document.getElementById('tumControls');
+                if (tumControls) {
+                    tumControls.style.display = this.trajectoryState.loaded ? 'block' : 'none';
+                }
+
+                const anchorControls = document.getElementById('anchorControls');
+                if (anchorControls) {
+                    anchorControls.style.display = this.trajectoryState.loaded ? 'block' : 'none';
+                }
+
+                const playBtn = document.getElementById('playBtn');
+                if (playBtn) {
+                    playBtn.textContent = this.isPlaying ? '▶️ 播放中' : (this.currentFrame > 0 ? '▶️ 继续' : '▶️ 播放');
+                    playBtn.disabled = !this.trajectoryState.loaded || this.isPlaying;
+                }
+
+                const pauseBtn = document.getElementById('pauseBtn');
+                if (pauseBtn) {
+                    pauseBtn.disabled = !this.trajectoryState.loaded || !this.isPlaying;
+                }
+
+                const stopBtn = document.getElementById('stopBtn');
+                if (stopBtn) {
+                    stopBtn.disabled = !this.trajectoryState.loaded || (!this.isPlaying && this.currentFrame === 0);
+                }
+
+                this.renderStatus();
+            }
+
+            renderStatus() {
+                if (this.statusPrimaryDiv) {
+                    this.statusPrimaryDiv.textContent = this.statusMessage;
+                }
+
+                if (this.statusMetaDiv) {
+                    const parts = [
+                        this.sceneState.loaded
+                            ? `Scene: ${this.sceneState.name || 'loaded'}`
+                            : this.sceneState.pending
+                                ? `Scene: pending ${this.sceneState.name || this.sceneState.sourceLabel || 'reference'}`
+                            : 'Scene: none',
+                        this.trajectoryState.loaded
+                            ? (this.isPlaying
+                                ? `Trajectory: playing ${Math.min(this.currentFrame + 1, this.trajectoryState.frameCount)}/${this.trajectoryState.frameCount}`
+                                : `Trajectory: ${this.trajectoryState.frameCount} frames`)
+                            : this.trajectoryState.pending
+                                ? `Trajectory: pending ${this.trajectoryState.sourceLabel || 'reference'}`
+                            : 'Trajectory: none'
+                    ];
+                    if (this.anchorSet && this.trajectoryState.loaded) {
+                        parts.push('Anchored');
+                    }
+                    if (this.currentFPS > 0) {
+                        parts.push(`FPS: ${this.currentFPS}`);
+                    }
+                    this.statusMetaDiv.textContent = parts.join(' · ');
+                }
+            }
+
+            setupTUMEventListeners() {
+                const speedSlider = document.getElementById('speedSlider');
+                const progressSlider = document.getElementById('progressSlider');
+                const scaleSlider = document.getElementById('scaleSlider');
+                const frameByFrameCheckbox = document.getElementById('frameByFrame');
+
+                const tumFileInput = document.getElementById('tumFile');
+                if (tumFileInput) {
+                    tumFileInput.addEventListener('change', (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            this.loadTUMFileFromInput(file);
+                            e.target.value = '';
+                        }
+                    });
+                }
+
+                speedSlider.addEventListener('input', (e) => {
+                    this.playSpeed = parseFloat(e.target.value);
+                    document.getElementById('speedLabel').textContent = `${this.playSpeed.toFixed(1)}x`;
+                });
+
+                scaleSlider.addEventListener('input', (e) => {
+                    this.trajectoryScale = parseFloat(e.target.value);
+                    document.getElementById('scaleLabel').textContent = `${this.trajectoryScale.toFixed(1)}x`;
+
+                    if (this.originalTrajectory.length > 0) {
+                        this.applyTrajectoryScale();
+                        if (!this.isPlaying) {
+                            this.applyTUMFrame(this.currentFrame);
+                        }
+                    }
+                });
+
+                progressSlider.addEventListener('input', (e) => {
+                    if (this.tumTrajectory.length > 0) {
+                        this.currentFrame = parseInt(e.target.value);
+                        this.updateProgressLabel();
+                        if (!this.isPlaying) {
+                            this.applyTUMFrame(this.currentFrame);
+                        }
+                    }
+                });
+
+                frameByFrameCheckbox.addEventListener('change', (e) => {
+                    const mode = e.target.checked ? '逐帧播放' : '时间戳播放';
+                    if (this.isPlaying) {
+                        this.pauseTUMTrajectory();
+                        setTimeout(() => this.playTUMTrajectory(), 100);
+                    } else {
+                        this.updateStatus(`播放模式已切换为${mode}`);
+                    }
+                });
+            }
+
+            // === 坐标系转换工具函数 ===
+
+            rdfToBabylon(rdfPos, rdfQuat) {
+                // frameHint='y_up_world' → trajectory is already in a
+                // right-handed y-up world frame (cloud / CineDATA). Use
+                // identity mapping; the default RDF y-flip would invert the
+                // up direction (camera-going-up reads as camera-going-down).
+                if (this.frameHint === 'y_up_world') {
+                    return {
+                        position: new BABYLON.Vector3(rdfPos.x, rdfPos.y, rdfPos.z),
+                        quaternion: new BABYLON.Quaternion(rdfQuat.x, rdfQuat.y, rdfQuat.z, rdfQuat.w)
+                    };
+                }
+                return {
+                    position: new BABYLON.Vector3(rdfPos.x, -rdfPos.y, rdfPos.z),
+                    quaternion: new BABYLON.Quaternion(-rdfQuat.x, rdfQuat.y, -rdfQuat.z, rdfQuat.w)
+                };
+            }
+
+            babylonToRDF(babylonPos, babylonQuat) {
+                if (this.frameHint === 'y_up_world') {
+                    return {
+                        position: { x: babylonPos.x, y: babylonPos.y, z: babylonPos.z },
+                        quaternion: { x: babylonQuat.x, y: babylonQuat.y, z: babylonQuat.z, w: babylonQuat.w }
+                    };
+                }
+                return {
+                    position: { x: babylonPos.x, y: -babylonPos.y, z: babylonPos.z },
+                    quaternion: { x: -babylonQuat.x, y: babylonQuat.y, z: -babylonQuat.z, w: babylonQuat.w }
+                };
+            }
+
+            getCameraRotationQuaternion(camera = this.getActiveCamera()) {
+                if (!camera) {
+                    return this.IDENTITY_QUAT.clone();
+                }
+                const viewMatrix = camera.getViewMatrix();
+                const inverseViewMatrix = BABYLON.Matrix.Invert(viewMatrix);
+                const rotationQuat = new BABYLON.Quaternion();
+                inverseViewMatrix.decompose(null, rotationQuat, null);
+                return rotationQuat;
+            }
+
+            quaternionToRDFEuler(quat) {
+                const euler = quat.toEulerAngles();
+                return {
+                    roll: euler.z * 180 / Math.PI,
+                    pitch: -euler.x * 180 / Math.PI,
+                    yaw: euler.y * 180 / Math.PI
+                };
+            }
+
+            computeBabylonPoseFromRDF(rdfPos, rdfQuat) {
+                const result = this.rdfToBabylon(rdfPos, rdfQuat);
+                // Normalize quaternion using helper to avoid numerical issues downstream
+                this.normalizeQuaternion(result.quaternion);
+
+                return { babylonPos: result.position, correctedQuat: result.quaternion };
+            }
+
+            // Normalize a quaternion (BABYLON.Quaternion instance or plain {x,y,z,w} object).
+            normalizeQuaternion(q) {
+                if (!q) return q;
+                // If BABYLON.Quaternion with normalize method
+                if (typeof q.normalize === 'function') {
+                    try {
+                        q.normalize();
+                        return q;
+                    } catch (e) {
+                        // fallthrough to manual normalization
+                    }
+                }
+                // Manual normalization for plain objects
+                if (typeof q.x === 'number' && typeof q.y === 'number' && typeof q.z === 'number' && typeof q.w === 'number') {
+                    const len = Math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+                    if (len > 0) {
+                        const inv = 1.0 / len;
+                        q.x *= inv; q.y *= inv; q.z *= inv; q.w *= inv;
+                    }
+                }
+                return q;
+            }
+
+            applyCameraPose(position, quaternion) {
+                const activeCam = (this.usingPoseCamera && this.poseCamera) ? this.poseCamera : this.camera;
+
+                activeCam.position = position.clone();
+                if (!activeCam.rotationQuaternion) {
+                    activeCam.rotationQuaternion = new BABYLON.Quaternion();
+                }
+                
+                // 检测并修正奇异姿态 (万向锁)
+                // 当四元数接近 (±1, 0, 0, 0) 时，添加微小扰动避免万向锁
+                const correctedQuat = quaternion.clone();
+                const epsilon = 1e-9;
+                const minus_epsilon = 1.0 - epsilon;
+                
+                // 检查是否接近奇异点 (w接近0且其他分量中有一个接近±1)
+                const absW = Math.abs(correctedQuat.w);
+                const absX = Math.abs(correctedQuat.x);
+                const absY = Math.abs(correctedQuat.y);
+                const absZ = Math.abs(correctedQuat.z);
+                
+                const isSingular = (
+                    (absW < epsilon && (absX > minus_epsilon || absY > minus_epsilon || absZ > minus_epsilon)) ||
+                    (absX > minus_epsilon && absY < epsilon && absZ < epsilon && absW < epsilon)
+                );
+                
+                if (isSingular) {
+                    console.warn('检测到奇异姿态，添加微小扰动避免万向锁:', 
+                                 `quat=(${correctedQuat.x.toFixed(9)}, ${correctedQuat.y.toFixed(9)}, ${correctedQuat.z.toFixed(9)}, ${correctedQuat.w.toFixed(9)})`);
+                    
+                    // 根据主导轴添加微小扰动到其他分量
+                    if (Math.abs(correctedQuat.x) > minus_epsilon) {
+                        // x 轴主导，扰动 y 和 z
+                        correctedQuat.y += epsilon;
+                        correctedQuat.z += epsilon;
+                    } else if (Math.abs(correctedQuat.y) > minus_epsilon) {
+                        // y 轴主导，扰动 x 和 z
+                        correctedQuat.x += epsilon;
+                        correctedQuat.z += epsilon;
+                    } else if (Math.abs(correctedQuat.z) > minus_epsilon) {
+                        // z 轴主导，扰动 x 和 y
+                        correctedQuat.x += epsilon;
+                        correctedQuat.y += epsilon;
+                    }
+                    
+                    // 确保 w 不为 0
+                    if (Math.abs(correctedQuat.w) < epsilon) {
+                        correctedQuat.w += epsilon;
+                    }
+                    
+                    // 重新归一化
+                    this.normalizeQuaternion(correctedQuat);
+                    
+                    console.log('修正后四元数:', 
+                                `quat=(${correctedQuat.x.toFixed(6)}, ${correctedQuat.y.toFixed(6)}, ${correctedQuat.z.toFixed(6)}, ${correctedQuat.w.toFixed(6)})`);
+                }
+                
+                activeCam.rotationQuaternion.copyFrom(correctedQuat);
+            }
+
+
+            async loadSceneFromUrl(url, displayName = 'scene asset') {
+                const sourceLabel = this.getDisplayNameFromUrl(url, 'scene asset');
+                const sceneDisplayName = displayName || url.split('/').pop() || 'scene_asset';
+
+                try {
+                    console.log('[SceneViewer] loadSceneFromUrl URL:', url);
+                    this.updateStatus(`正在加载 ${sceneDisplayName}...`);
+                    this.clearCurrentMesh();
+                    this.sceneState = {
+                        loaded: false,
+                        name: sceneDisplayName,
+                        vertices: 0,
+                        sourceLabel,
+                        pending: true
+                    };
+                    this.refreshPanelUi();
+
+                    // Load directly via GaussianSplattingMesh — no intermediate fetch
+                    await this.loadGaussianSplat(url, sceneDisplayName);
+                } catch (error) {
+                    this.sceneState.pending = false;
+                    this.refreshPanelUi();
+                    this.updateStatus(`加载失败: ${error.message}`);
+                    console.error('[SceneViewer] loadSceneFromUrl error:', error, 'url:', url);
+                }
+            }
+
+            async loadGaussianSplat(url, displayName) {
+                console.log('[SceneViewer] loadGaussianSplat fetching:', url);
+                this.updateStatus(`正在获取 ${displayName}...`);
+
+                // Fetch as blob, wrap in a File so ImportMeshAsync can detect
+                // the .spz extension from the file name. This is the same shape
+                // the reference viewer.html uses with a browser file-picker.
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`fetch failed (${response.status})`);
+                const blob = await response.blob();
+                console.log('[SceneViewer] fetched:', blob.size, 'bytes');
+
+                const fileName = (displayName && displayName.toLowerCase().endsWith('.spz'))
+                    ? displayName
+                    : (displayName || 'scene') + '.spz';
+                const file = new File([blob], fileName, { type: 'application/octet-stream' });
+
+                this.updateStatus(`正在解析 ${displayName}... (${(blob.size / 1048576).toFixed(1)} MB)`);
+                const result = await BABYLON.SceneLoader.ImportMeshAsync("", "", file, this.scene);
+                if (result.meshes && result.meshes.length > 0) {
+                    const mesh = result.meshes[0];
+                    this.setupMesh(mesh);
+                    this.setCameraToOrigin();
+                    this.updateStatus(`成功加载 ${displayName} - ${mesh.getTotalVertices()} 顶点`);
+                } else {
+                    throw new Error('没有找到可显示的网格');
+                }
+            }
+
+            async loadBundledScene() {
+                const BUNDLED_SCENE_URL = './scenes/T8-lobby.spz';
+                const BUNDLED_SCENE_NAME = 'T8-lobby.spz';
+                try {
+                    this.updateStatus(`正在加载内置场景 ${BUNDLED_SCENE_NAME}...`);
+                    await this.loadSceneFromUrl(BUNDLED_SCENE_URL, BUNDLED_SCENE_NAME);
+                } catch (error) {
+                    this.updateStatus(`内置场景加载失败: ${error.message}`);
+                }
+            }
+
+            async loadTextFromUrl(url) {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`轨迹加载失败 (${response.status})`);
+                }
+                return response.text();
+            }
+
+            async applyLaunchRequest(payload) {
+                this.launchRequest = payload || null;
+                if (!payload) {
+                    this.updateStatus('收到空的 SceneViewer 请求');
+                    return;
+                }
+                // Frame hint: 'y_up_world' means the trajectory is already in
+                // a right-handed y-up world frame (cloud/CineDATA), so
+                // rdfToBabylon's y-flip should be skipped. Falsy / absent =
+                // legacy RDF optical frame (x right, y down, z forward).
+                this.frameHint = payload.frameHint || null;
+
+                try {
+                    if (payload.scene && payload.scene.url) {
+                        const sceneName = payload.scene.name || payload.scene.sourceUrl || 'scene asset';
+                        await this.loadSceneFromUrl(payload.scene.url, sceneName);
+                    } else if (payload.scene) {
+                        this.clearCurrentMesh();
+                        this.sceneState = {
+                            loaded: false,
+                            name: payload.scene.name || '',
+                            vertices: 0,
+                            sourceLabel: payload.scene.sourceUrl || payload.scene.name || 'scene reference',
+                            pending: true
+                        };
+                        this.refreshPanelUi();
+                        this.updateStatus('已收到场景引用，等待可访问的 scene asset URL');
+                    } else {
+                        this.updateStatus('未提供场景文件，可继续手动加载 .splat / .spz / .ply 文件');
+                    }
+
+                    // Apply the anchor pose BEFORE loading the trajectory so the
+                    // trajectory is parsed with the scene-aligned anchor already set.
+                    // Without this step the trajectory is loaded in its recording
+                    // frame and the scene appears upside-down.
+                    if (payload.anchorTumUrl) {
+                        try {
+                            await this.loadAnchorFromTUMUrl(payload.anchorTumUrl);
+                        } catch (err) {
+                            console.warn('[SceneViewer] anchor TUM load failed:', err);
+                        }
+                    }
+
+                    if (payload.trajectory) {
+                        await this.loadTrajectorySource(payload.trajectory);
+                    } else if (payload.sessionId) {
+                        this.clearTrajectoryData();
+                        this.trajectoryState = {
+                            loaded: false,
+                            frameCount: 0,
+                            durationSec: 0,
+                            sourceLabel: `session ${payload.sessionId}`,
+                            pending: true
+                        };
+                        this.refreshPanelUi();
+                        this.updateStatus(`已连接到 ${payload.sessionId}，等待轨迹或手动导入 TUM 文件`);
+                    }
+                } catch (error) {
+                    console.error('应用 SceneViewer 请求失败:', error);
+                    if (payload.scene && !this.sceneState.loaded) {
+                        this.sceneState.pending = false;
+                    }
+                    if (payload.trajectory && !this.trajectoryState.loaded) {
+                        this.trajectoryState.pending = false;
+                    }
+                    this.refreshPanelUi();
+                    this.updateStatus(`SceneViewer 请求失败: ${error.message}`);
+                }
+            }
+
+            async loadTrajectorySource(source) {
+                switch (source.type) {
+                    case 'inline_tum':
+                        this.parseTUMContent(source.text || '', {
+                            sourceLabel: source.name || 'Android 注入 TUM'
+                        });
+                        return;
+                    case 'inline_json':
+                        this.loadTrajectoryJson(source.json, {
+                            sourceLabel: source.name || 'Android 注入 JSON'
+                        });
+                        return;
+                    case 'local_file':
+                    case 'remote_url': {
+                        if (!source.url) {
+                            throw new Error('轨迹源缺少可访问 URL');
+                        }
+                        const text = await this.loadTextFromUrl(source.url);
+                        this.parseTUMContent(text, {
+                            sourceLabel: source.name || this.getDisplayNameFromUrl(source.url, 'trajectory file')
+                        });
+                        return;
+                    }
+                    case 'session_reference':
+                        this.clearTrajectoryData();
+                        this.trajectoryState = {
+                            loaded: false,
+                            frameCount: 0,
+                            durationSec: 0,
+                            sourceLabel: `session ${source.sessionId || 'unknown'}`,
+                            pending: true
+                        };
+                        this.refreshPanelUi();
+                        this.updateStatus(`已收到 sessionId=${source.sessionId}，等待后续轨迹解析`);
+                        return;
+                    case 'trajectory_reference':
+                        this.clearTrajectoryData();
+                        this.trajectoryState = {
+                            loaded: false,
+                            frameCount: 0,
+                            durationSec: 0,
+                            sourceLabel: `trajectory ${source.trajectoryId || 'unknown'}`,
+                            pending: true
+                        };
+                        this.refreshPanelUi();
+                        this.updateStatus(`已收到 trajectoryId=${source.trajectoryId}，等待后续轨迹解析`);
+                        return;
+                    default:
+                        throw new Error(`不支持的轨迹源类型: ${source.type || 'unknown'}`);
+                }
+            }
+
+            loadTrajectoryJson(rawJson, metadata = {}) {
+                const payload = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+                const tumText = this.convertTrajectoryJsonToTUM(payload);
+                this.parseTUMContent(tumText, metadata);
+            }
+
+            convertTrajectoryJsonToTUM(payload) {
+                const records = Array.isArray(payload)
+                    ? payload
+                    : payload.frames || payload.samples || payload.fois || payload.pois || [];
+
+                if (!Array.isArray(records) || records.length === 0) {
+                    throw new Error('JSON 轨迹为空');
+                }
+
+                return records.map((record, index) => {
+                    const timestamp = Number.isFinite(record.timestamp)
+                        ? record.timestamp
+                        : Number.isFinite(record.tSec)
+                            ? record.tSec
+                            : Number.isFinite(record.timestampMs)
+                                ? record.timestampMs / 1000.0
+                                : Number.isFinite(record.timestamp_ms)
+                                    ? record.timestamp_ms / 1000.0
+                                    : Number.isFinite(record.sequence_index)
+                                        ? record.sequence_index
+                                        : index;
+
+                    const poi = record.poi || null;
+                    const base = record.base || (poi && poi.base_pose) || poi || null;
+                    const x = Number.isFinite(record.baseX) ? record.baseX : (base && Number.isFinite(base.x) ? base.x : 0);
+                    const z = Number.isFinite(record.baseY) ? record.baseY : (base && Number.isFinite(base.y) ? base.y : 0);
+                    const yaw = Number.isFinite(record.baseYaw) ? record.baseYaw : (base && Number.isFinite(base.yaw) ? base.yaw : 0);
+                    const halfYaw = yaw / 2.0;
+
+                    return [
+                        timestamp.toFixed(6),
+                        x.toFixed(6),
+                        '0.000000',
+                        z.toFixed(6),
+                        '0.000000',
+                        Math.sin(halfYaw).toFixed(6),
+                        '0.000000',
+                        Math.cos(halfYaw).toFixed(6)
+                    ].join(' ');
+                }).join('\n');
+            }
+
+            async loadFile(file, metadata = {}) {
+                if (!this.validateFile(file)) return;
+
+                const sceneDisplayName = metadata.displayName || file.name;
+                const sceneSourceLabel = metadata.sourceLabel || '手动导入';
+
+                try {
+                    this.updateStatus(`正在加载 ${sceneDisplayName}...`);
+                    this.clearCurrentMesh();
+                    this.sceneState = {
+                        loaded: false,
+                        name: sceneDisplayName,
+                        vertices: 0,
+                        sourceLabel: sceneSourceLabel,
+                        pending: true
+                    };
+                    this.refreshPanelUi();
+
+                    const objectUrl = URL.createObjectURL(file);
+                    try {
+                        await this.loadGaussianSplat(objectUrl, sceneDisplayName);
+                    } finally {
+                        URL.revokeObjectURL(objectUrl);
+                    }
+                } catch (error) {
+                    this.sceneState.pending = false;
+                    this.refreshPanelUi();
+                    this.updateStatus(`加载失败: ${error.message}`);
+                }
+            }
+
+            validateFile(file) {
+                const extension = file.name.toLowerCase().split('.').pop();
+                if (!['spz', 'splat', 'ply'].includes(extension)) {
+                    this.updateStatus('不支持的文件格式，请使用 .splat、.spz 或 .ply 文件');
+                    return false;
+                }
+                return true;
+            }
+
+            clearCurrentMesh() {
+                if (this.currentMesh) {
+                    this.currentMesh.dispose();
+                    this.currentMesh = null;
+                }
+                this.sceneState = {
+                    loaded: false,
+                    name: '',
+                    vertices: 0,
+                    sourceLabel: '',
+                    pending: false
+                };
+                this.refreshPanelUi();
+            }
+
+            setupMesh(mesh) {
+                this.currentMesh = mesh;
+                mesh.isVisible = true;
+                mesh.setEnabled(true);
+
+                if (!mesh.material) {
+                    const material = new BABYLON.StandardMaterial("spzMaterial", this.scene);
+                    material.diffuseColor = new BABYLON.Color3(1, 1, 1);
+                    material.emissiveColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+                    mesh.material = material;
+                }
+
+                this.sceneState = {
+                    loaded: true,
+                    name: this.sceneState.name,
+                    vertices: mesh.getTotalVertices(),
+                    sourceLabel: this.sceneState.sourceLabel,
+                    pending: false
+                };
+                this.refreshPanelUi();
+            }
+
+            fitCameraToMesh() {
+                if (!this.currentMesh) return;
+
+                try {
+                    this.currentMesh.computeWorldMatrix(true);
+                    const boundingInfo = this.currentMesh.getBoundingInfo();
+
+                    if (boundingInfo) {
+                        const boundingBox = boundingInfo.boundingBox;
+                        const center = boundingBox.center;
+                        const size = boundingBox.maximum.subtract(boundingBox.minimum);
+                        const maxDimension = Math.max(size.x, size.y, size.z);
+
+                        const distance = maxDimension * 2;
+                        const cameraPosition = center.add(new BABYLON.Vector3(distance, distance * 0.5, distance));
+
+                        this.camera.position = cameraPosition;
+                        this.camera.setTarget(center);
+                    }
+                } catch (error) {
+                    this.camera.position = new BABYLON.Vector3(0, 5, -10);
+                    this.camera.setTarget(BABYLON.Vector3.Zero());
+                }
+            }
+
+            setCameraToOrigin() {
+                // 设置输入框为 RDF 坐标系的原点
+                document.getElementById('posX').value = '0';
+                document.getElementById('posY').value = '0';
+                document.getElementById('posZ').value = '0';
+                document.getElementById('quatX').value = '1';
+                document.getElementById('quatY').value = '0';
+                document.getElementById('quatZ').value = '0';
+                document.getElementById('quatW').value = '0';
+
+                // 通过标准的 RDF 位姿设置流程来应用
+                this.setCameraPoseRDF();
+                this.rememberDefaultCameraState();
+                // 不是单位四元数，给一个x为1，很多场景都能正过来
+                console.log('相机已通过RDF坐标系设置到原点位置 (0,0,0) 和四元数 (1,0,0,0)');
+            }
+
+            updateCameraInfo() {
+                const cam = this.getActiveCamera();
+                if (!cam) return;
+                this.updateAnchorVisualization();
+
+                const pos = cam.position;
+                const target = (cam instanceof BABYLON.ArcRotateCamera) ? cam.getTarget() : pos.add(cam.getForwardRay().direction.scale(5));
+
+                const rotationQuat = this.getCameraRotationQuaternion(cam);
+                const rdfData = this.babylonToRDF(pos, rotationQuat);
+                const rdfEuler = this.quaternionToRDFEuler(rotationQuat);
+
+                this.cameraInfoDiv.innerHTML = `
+                    <strong>Position (RDF):</strong><br>
+                    (${rdfData.position.x.toFixed(2)}, ${rdfData.position.y.toFixed(2)}, ${rdfData.position.z.toFixed(2)})<br>
+                    <strong>Target (BJS):</strong><br>
+                    (${target.x.toFixed(2)}, ${target.y.toFixed(2)}, ${target.z.toFixed(2)})<br>
+                    <strong>Quaternion RDF (x,y,z,w):</strong><br>
+                    (${rdfData.quaternion.x.toFixed(3)}, ${rdfData.quaternion.y.toFixed(3)}, ${rdfData.quaternion.z.toFixed(3)}, ${rdfData.quaternion.w.toFixed(3)})<br>
+                    <strong>Euler RDF (R,P,Y°):</strong><br>
+                    (${rdfEuler.roll.toFixed(1)}, ${rdfEuler.pitch.toFixed(1)}, ${rdfEuler.yaw.toFixed(1)})<br>
+                    <small>${this.isTouchPrimary ? '触摸: 单指旋转 / 双指平移 / 捏合缩放 / 双击聚焦' : '桌面: 左键旋转 / 右键平移 / 滚轮缩放'}</small><br>
+                    <small>相机: ${cam.name} · 预设: ${this.activeCameraPreset}</small>
+                `;
+            }
+
+            updatePerformanceInfo() {
+                this.frameCount++;
+                const now = performance.now();
+
+                if (now - this.lastFPSUpdate >= 1000) { // 每秒更新一次
+                    this.currentFPS = Math.round(this.frameCount * 1000 / (now - this.lastFPSUpdate));
+                    this.frameCount = 0;
+                    this.lastFPSUpdate = now;
+                    this.renderStatus();
+
+                    if (this.currentFPS < 30 && this.currentMesh) {
+                        console.warn(`低FPS警告: ${this.currentFPS} FPS`);
+                    }
+                }
+            }
+
+            updateStatus(message) {
+                this.statusMessage = message;
+                this.renderStatus();
+            }
+
+            getCameraPoseRDF() {
+                const camera = this.getActiveCamera();
+                if (!camera) {
+                    return;
+                }
+
+                const position = camera.position;
+                const rotationQuat = this.getCameraRotationQuaternion(camera);
+                const rdfPose = this.babylonToRDF(position, rotationQuat);
+
+                this.updateStatus(`位姿: pos(${rdfPose.position.x.toFixed(2)}, ${rdfPose.position.y.toFixed(2)}, ${rdfPose.position.z.toFixed(2)}) quat(${rdfPose.quaternion.x.toFixed(3)}, ${rdfPose.quaternion.y.toFixed(3)}, ${rdfPose.quaternion.z.toFixed(3)}, ${rdfPose.quaternion.w.toFixed(3)})`);
+
+                return rdfPose;
+            }
+
+            setCameraPoseRDF() {
+                let rdfX = parseFloat(document.getElementById('posX').value);
+                let rdfY = parseFloat(document.getElementById('posY').value);
+                let rdfZ = parseFloat(document.getElementById('posZ').value);
+
+                let rdfQuatX = parseFloat(document.getElementById('quatX').value);
+                let rdfQuatY = parseFloat(document.getElementById('quatY').value);
+                let rdfQuatZ = parseFloat(document.getElementById('quatZ').value);
+                let rdfQuatW = parseFloat(document.getElementById('quatW').value);
+
+                if (isNaN(rdfX)) rdfX = 0;
+                if (isNaN(rdfY)) rdfY = 0;
+                if (isNaN(rdfZ)) rdfZ = 0;
+
+                if (isNaN(rdfQuatX)) rdfQuatX = 0;
+                if (isNaN(rdfQuatY)) rdfQuatY = 0;
+                if (isNaN(rdfQuatZ)) rdfQuatZ = 0;
+                if (isNaN(rdfQuatW)) rdfQuatW = 1;
+
+                if (rdfQuatX === 0 && rdfQuatY === 0 && rdfQuatZ === 0 && rdfQuatW === 0) {
+                    rdfQuatW = 1;  // 单位四元数 (0,0,0,1)
+                    this.updateStatus('四元数全为0，已设置为单位四元数');
+                }
+
+                const quatLength = Math.sqrt(rdfQuatX * rdfQuatX + rdfQuatY * rdfQuatY + rdfQuatZ * rdfQuatZ + rdfQuatW * rdfQuatW);
+                if (Math.abs(quatLength - 1.0) > 0.1) {
+                    const invLength = 1.0 / quatLength;
+                    document.getElementById('quatX').value = (rdfQuatX * invLength).toFixed(4);
+                    document.getElementById('quatY').value = (rdfQuatY * invLength).toFixed(4);
+                    document.getElementById('quatZ').value = (rdfQuatZ * invLength).toFixed(4);
+                    document.getElementById('quatW').value = (rdfQuatW * invLength).toFixed(4);
+                    this.updateStatus(`四元数模长为 ${quatLength.toFixed(4)}，已自动归一化`);
+                    return;
+                }
+
+                try {
+                    const rdfPos = { x: rdfX, y: rdfY, z: rdfZ };
+                    const rdfQuat = { x: rdfQuatX, y: rdfQuatY, z: rdfQuatZ, w: rdfQuatW };
+                    const babylonData = this.rdfToBabylon(rdfPos, rdfQuat);
+
+                    const usingOffset = (this.usingPoseCamera && this.playOffsetReady);
+                    const effectiveQuat = usingOffset ? this.playOffsetQuat.multiply(babylonData.quaternion) : babylonData.quaternion;
+                    const effectivePos = usingOffset
+                        ? this.playOffsetPos.add(babylonData.position.rotateByQuaternionToRef(this.playOffsetQuat, new BABYLON.Vector3()))
+                        : babylonData.position;
+
+                    this.applyCameraPose(effectivePos, effectiveQuat);
+                    this.updateStatus(`已设置RDF位姿: pos(${rdfX.toFixed(2)}, ${rdfY.toFixed(2)}, ${rdfZ.toFixed(2)})`);
+
+                } catch (error) {
+                    console.error('设置相机位姿失败:', error);
+                    this.updateStatus('设置相机位姿失败: ' + error.message);
+                }
+            }
+
+            getCurrentPoseToInputs() {
+                const camera = this.getActiveCamera();
+                if (!camera) {
+                    this.updateStatus('相机未初始化');
+                    return;
+                }
+
+                const position = camera.position;
+                const rotationQuat = this.getCameraRotationQuaternion(camera);
+
+                const rdfData = this.babylonToRDF(position, rotationQuat);
+
+                document.getElementById('posX').value = rdfData.position.x.toFixed(3);
+                document.getElementById('posY').value = rdfData.position.y.toFixed(3);
+                document.getElementById('posZ').value = rdfData.position.z.toFixed(3);
+
+                document.getElementById('quatX').value = rdfData.quaternion.x.toFixed(4);
+                document.getElementById('quatY').value = rdfData.quaternion.y.toFixed(4);
+                document.getElementById('quatZ').value = rdfData.quaternion.z.toFixed(4);
+                document.getElementById('quatW').value = rdfData.quaternion.w.toFixed(4);
+
+                this.updateStatus(`已获取当前位姿到输入框`);
+            }
+
+            // === TUM轨迹管理系统 ===
+
+            loadTUMFileFromInput(file) {
+                if (!file) {
+                    this.updateStatus('文件对象为空');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        this.parseTUMContent(e.target.result, {
+                            sourceLabel: file.name
+                        });
+                    } catch (error) {
+                        console.error('解析TUM文件失败:', error);
+                        this.updateStatus('解析TUM文件失败: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            parseTUMContent(content, metadata = {}) {
+                const lines = content.split('\n');
+                const nextTrajectory = [];
+
+                let parsedCount = 0;
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed === '' || trimmed.startsWith('#')) continue;
+
+                    const parts = trimmed.split(/\s+/);
+                    if (parts.length >= 8) {
+                        const pose = {
+                            timestamp: parseFloat(parts[0]),
+                            position: {
+                                x: parseFloat(parts[1]),
+                                y: parseFloat(parts[2]),
+                                z: parseFloat(parts[3])
+                            },
+                            quaternion: {
+                                x: parseFloat(parts[4]),
+                                y: parseFloat(parts[5]),
+                                z: parseFloat(parts[6]),
+                                w: parseFloat(parts[7])
+                            }
+                        };
+
+                        // Normalize quaternion to avoid downstream numerical issues
+                        this.normalizeQuaternion(pose.quaternion);
+
+                        if (!isNaN(pose.timestamp) && !isNaN(pose.position.x) &&
+                            !isNaN(pose.quaternion.w)) {
+                            nextTrajectory.push(pose);
+                            parsedCount++;
+                        }
+                    }
+                }
+
+                if (nextTrajectory.length === 0) {
+                    throw new Error('未找到有效的TUM格式数据');
+                }
+
+                nextTrajectory.sort((a, b) => a.timestamp - b.timestamp);
+                this.resetTrajectoryPlaybackRuntime({ resetFrame: true });
+                this.tumTrajectory = nextTrajectory;
+
+                this.originalTrajectory = JSON.parse(JSON.stringify(this.tumTrajectory));
+                this.originalFirstFrame = JSON.parse(JSON.stringify(this.tumTrajectory[0]));
+                this.anchorSet = false;
+                this.anchorModeEnabled = false;
+                this.anchorCandidatePosition = null;
+                this.anchorCandidateSource = '';
+                this.updateAnchorStatusLabel('锚点: 原始位置');
+                this.updateAnchorVisualization();
+
+                if (this.trajectoryScale !== 1.0) {
+                    this.applyTrajectoryScale();
+                }
+
+                document.getElementById('progressSlider').max = this.tumTrajectory.length - 1;
+                this.currentFrame = 0;
+                this.trajectoryState = {
+                    loaded: true,
+                    frameCount: this.tumTrajectory.length,
+                    durationSec: Math.max(
+                        0,
+                        this.tumTrajectory[this.tumTrajectory.length - 1].timestamp - this.tumTrajectory[0].timestamp
+                    ),
+                    sourceLabel: metadata.sourceLabel || this.trajectoryState.sourceLabel || 'trajectory',
+                    pending: false
+                };
+                this.updateProgressLabel();
+                this.syncInteractionUi();
+
+                this.updateStatus(`TUM轨迹已加载: ${this.tumTrajectory.length} 帧`);
+
+                // Re-apply sticky anchor (from launch request) so the scene
+                // orientation stays consistent across trajectory switches. The
+                // parse flow above wiped anchorSet to false; we rehydrate here.
+                if (this.stickyAnchorPose) {
+                    this.applyAnchorPose(
+                        this.stickyAnchorPose.position,
+                        this.stickyAnchorPose.quaternion,
+                        '已重新应用锚点'
+                    );
+                }
+
+                this.applyTUMFrame(0);
+            }
+
+            applyTUMFrame(frameIndex) {
+                if (frameIndex < 0 || frameIndex >= this.tumTrajectory.length) return;
+
+                const pose = this.tumTrajectory[frameIndex];
+
+                document.getElementById('posX').value = pose.position.x.toFixed(3);
+                document.getElementById('posY').value = pose.position.y.toFixed(3);
+                document.getElementById('posZ').value = pose.position.z.toFixed(3);
+                document.getElementById('quatX').value = pose.quaternion.x.toFixed(4);
+                document.getElementById('quatY').value = pose.quaternion.y.toFixed(4);
+                document.getElementById('quatZ').value = pose.quaternion.z.toFixed(4);
+                document.getElementById('quatW').value = pose.quaternion.w.toFixed(4);
+
+                this.setCameraPoseRDF();
+
+                this.currentFrame = frameIndex;
+                document.getElementById('progressSlider').value = frameIndex;
+                this.updateProgressLabel();
+            }
+
+            updateProgressLabel() {
+                const label = document.getElementById('progressLabel');
+                if (this.tumTrajectory.length > 0) {
+                    const current = this.currentFrame + 1;
+                    const total = this.tumTrajectory.length;
+                    const timestamp = this.tumTrajectory[this.currentFrame].timestamp;
+                    label.textContent = `${current}/${total} (t=${timestamp.toFixed(3)})`;
+                } else {
+                    label.textContent = '0/0';
+                }
+            }
+
+            playTUMTrajectory() {
+                if (this.tumTrajectory.length === 0) {
+                    this.updateStatus('请先加载TUM轨迹文件');
+                    return;
+                }
+
+                if (this.isPlaying) {
+                    return;
+                }
+
+                this.isPlaying = true;
+                this.syncInteractionUi();
+
+                try {
+                    if (this.camera && this.tumTrajectory.length > 0) {
+                        const frame = this.tumTrajectory[this.currentFrame];
+                        const { babylonPos: tumPos, correctedQuat: tumQuat } = this.computeBabylonPoseFromRDF(
+                            { x: frame.position.x, y: frame.position.y, z: frame.position.z },
+                            { x: frame.quaternion.x, y: frame.quaternion.y, z: frame.quaternion.z, w: frame.quaternion.w }
+                        );
+                        const arcPos = this.camera.position.clone();
+                        const invView = BABYLON.Matrix.Invert(this.camera.getViewMatrix());
+                        const arcQuat = new BABYLON.Quaternion();
+                        invView.decompose(null, arcQuat, null);
+                        this.playOffsetQuat = arcQuat.multiply(BABYLON.Quaternion.Inverse(tumQuat));
+                        const rotatedTumPos = tumPos.rotateByQuaternionToRef(this.playOffsetQuat, new BABYLON.Vector3());
+                        this.playOffsetPos = arcPos.subtract(rotatedTumPos);
+                        this.playOffsetReady = true;
+                        console.log('已计算回放对齐偏移');
+                    }
+                } catch (e) {
+                    console.warn('计算回放对齐偏移失败，采用无偏移回放:', e);
+                    this.playOffsetPos = this.ZERO_VECTOR.clone();
+                    this.playOffsetQuat = this.IDENTITY_QUAT.clone();
+                    this.playOffsetReady = false;
+                }
+
+                if (this.poseCamera) {
+                    this.usingPoseCamera = true;
+                    this.poseCamera.fov = this.camera ? this.camera.fov : this.poseCamera.fov;
+                    this.applyTUMFrame(this.currentFrame);
+                    this.activatePoseCamera();
+                }
+                this.syncInteractionUi();
+
+                const calculateInterval = (currentIndex) => {
+                    const frameByFrame = document.getElementById('frameByFrame').checked;
+
+                    if (frameByFrame) {
+                        const baseFrameRate = 30; // 基础帧率：30 FPS
+                        return Math.max(16, 1000 / (baseFrameRate * this.playSpeed));
+                    } else {
+                        if (currentIndex >= this.tumTrajectory.length - 1) return 100;
+
+                        const currentTime = this.tumTrajectory[currentIndex].timestamp;
+                        const nextTime = this.tumTrajectory[currentIndex + 1].timestamp;
+                        const realTimeDiff = (nextTime - currentTime) * 1000;
+                        const adjustedInterval = realTimeDiff / this.playSpeed;
+                        const finalInterval = Math.max(16, adjustedInterval);
+
+                        return finalInterval;
+                    }
+                };
+
+                const playFrame = () => {
+                    if (!this.isPlaying) return;
+
+                    this.applyTUMFrame(this.currentFrame);
+
+                    if (this.currentFrame >= this.tumTrajectory.length - 1) {
+                        const loopPlay = document.getElementById('loopPlay').checked;
+                        if (loopPlay) {
+                            this.currentFrame = 0;
+                            this.applyTUMFrame(0);
+                            const interval = calculateInterval(0);
+                            this.playInterval = setTimeout(playFrame, interval);
+                        } else {
+                            this.pauseTUMTrajectory();
+                            this.updateStatus('TUM轨迹播放完成');
+                        }
+                        return;
+                    }
+
+                    const interval = calculateInterval(this.currentFrame);
+                    this.currentFrame++;
+
+                    this.playInterval = setTimeout(playFrame, interval);
+                };
+
+                playFrame();
+                const frameByFrame = document.getElementById('frameByFrame').checked;
+                const playMode = frameByFrame ? '逐帧' : '时间戳';
+                this.updateStatus(`播放TUM轨迹 (${this.playSpeed}x, ${playMode})`);
+            }
+
+            pauseTUMTrajectory() {
+                this.resetTrajectoryPlaybackRuntime();
+                this.syncInteractionUi();
+
+                this.updateStatus('TUM轨迹播放已暂停');
+            }
+
+            stopTUMTrajectory() {
+                this.resetTrajectoryPlaybackRuntime({ resetFrame: true });
+
+                if (this.tumTrajectory.length > 0) {
+                    this.applyTUMFrame(0);
+                }
+
+                this.updateStatus('TUM轨迹播放已停止');
+                this.syncInteractionUi();
+            }
+
+            async saveCurrentPoseAsAnchorFile() {
+                const pose = this.getCameraPoseRDF();
+                if (!pose) {
+                    this.updateStatus('无法获取当前位姿');
+                    return;
+                }
+
+                const ts = Date.now() / 1000.0;
+                const p = pose.position;
+                const q = pose.quaternion;
+                const line = `${ts.toFixed(6)} ${p.x.toFixed(6)} ${p.y.toFixed(6)} ${p.z.toFixed(6)} ${q.x.toFixed(6)} ${q.y.toFixed(6)} ${q.z.toFixed(6)} ${q.w.toFixed(6)}\n`;
+
+                const pad = (n) => n.toString().padStart(2, '0');
+                const d = new Date();
+                const defaultName = `anchor_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.tum`;
+
+                try {
+                    if ('showSaveFilePicker' in window) {
+                        const fileHandle = await window.showSaveFilePicker({
+                            suggestedName: defaultName,
+                            types: [{
+                                description: 'TUM trajectory files',
+                                accept: { 'text/plain': ['.tum', '.txt'] }
+                            }]
+                        });
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(line);
+                        await writable.close();
+                        this.updateStatus(`锚点已保存: ${fileHandle.name}`);
+                    } else {
+                        const userFileName = prompt('请输入文件名:', defaultName);
+                        if (userFileName === null) {
+                            this.updateStatus('保存已取消');
+                            return;
+                        }
+                        const finalName = userFileName.endsWith('.tum') || userFileName.endsWith('.txt')
+                            ? userFileName
+                            : userFileName + '.tum';
+
+                        const blob = new Blob([line], { type: 'text/plain;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = finalName;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        this.updateStatus(`锚点已导出: ${finalName}`);
+                    }
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        this.updateStatus('保存已取消');
+                    } else {
+                        console.error('保存锚点失败:', error);
+                        this.updateStatus('保存锚点失败: ' + error.message);
+                    }
+                }
+            }
+
+            loadAnchorFromTUMFile(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        this.parseAnchorTumText(e.target.result, '已从文件载入锚点');
+                    } catch (err) {
+                        console.error(err);
+                        this.updateStatus(`载入锚点失败: ${err.message}`);
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            async loadAnchorFromTUMUrl(url) {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`anchor TUM fetch failed (${response.status})`);
+                }
+                const text = await response.text();
+                this.parseAnchorTumText(text, '已从 URL 载入锚点');
+            }
+
+            parseAnchorTumText(text, statusMessage) {
+                const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+                if (lines.length === 0) throw new Error('anchor TUM 文件为空');
+
+                const first = lines[0];
+                const parts = first.split(/\s+/);
+                if (parts.length < 8) throw new Error('anchor TUM 格式错误，需: timestamp x y z qx qy qz qw');
+
+                const p = { x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) };
+                const q = { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]), w: parseFloat(parts[7]) };
+                if ([p.x, p.y, p.z, q.x, q.y, q.z, q.w].some(v => Number.isNaN(v))) {
+                    throw new Error('anchor TUM 含非数字内容');
+                }
+
+                const aq = { x: q.x, y: q.y, z: q.z, w: q.w };
+                this.normalizeQuaternion(aq);
+                // Remember as sticky — will be reapplied on every new trajectory load
+                this.stickyAnchorPose = { position: { x: p.x, y: p.y, z: p.z }, quaternion: { x: aq.x, y: aq.y, z: aq.z, w: aq.w } };
+                this.applyAnchorPose(p, aq, statusMessage);
+            }
+
+            recalculateTrajectoryWithAnchor() {
+                if (!this.anchorSet || this.originalTrajectory.length === 0) return;
+
+                console.log('重新计算轨迹相对位姿...');
+
+                const orig = this.originalFirstFrame;
+                const origPos = new BABYLON.Vector3(orig.position.x, orig.position.y, orig.position.z);
+                const oq = { x: orig.quaternion.x, y: orig.quaternion.y, z: orig.quaternion.z, w: orig.quaternion.w };
+                this.normalizeQuaternion(oq);
+                const origQuat = new BABYLON.Quaternion(oq.x, oq.y, oq.z, oq.w);
+
+                console.log(`原始第一帧: pos(${origPos.x.toFixed(3)}, ${origPos.y.toFixed(3)}, ${origPos.z.toFixed(3)})`);
+                console.log(`新锚点: pos(${this.anchorPosition.x.toFixed(3)}, ${this.anchorPosition.y.toFixed(3)}, ${this.anchorPosition.z.toFixed(3)})`);
+
+                const rotationTransform = this.anchorQuaternion.multiply(BABYLON.Quaternion.Inverse(origQuat));
+
+                for (let i = 0; i < this.originalTrajectory.length; i++) {
+                    const frame = this.originalTrajectory[i];
+                    const framePos = new BABYLON.Vector3(frame.position.x, frame.position.y, frame.position.z);
+                    // ensure frame quaternion is normalized via helper
+                    const fqObj = { x: frame.quaternion.x, y: frame.quaternion.y, z: frame.quaternion.z, w: frame.quaternion.w };
+                    this.normalizeQuaternion(fqObj);
+                    const frameQuat = new BABYLON.Quaternion(fqObj.x, fqObj.y, fqObj.z, fqObj.w);
+
+                    const relativePos = framePos.subtract(origPos);
+                    const relativeQuat = BABYLON.Quaternion.Inverse(origQuat).multiply(frameQuat);
+
+                    const rotatedRelativePos = relativePos.rotateByQuaternionToRef(rotationTransform, new BABYLON.Vector3());
+
+                    const newPos = this.anchorPosition.add(rotatedRelativePos);
+                    const newQuat = this.anchorQuaternion.multiply(relativeQuat);
+
+                    this.tumTrajectory[i] = {
+                        timestamp: frame.timestamp,
+                        position: {
+                            x: newPos.x,
+                            y: newPos.y,
+                            z: newPos.z
+                        },
+                        quaternion: {
+                            x: newQuat.x,
+                            y: newQuat.y,
+                            z: newQuat.z,
+                            w: newQuat.w
+                        }
+                    };
+                }
+
+                console.log(`轨迹重新计算完成，共${this.tumTrajectory.length}帧`);
+
+                if (this.trajectoryScale !== 1.0) {
+                    this.applyScaleAfterAnchorTransform();
+                }
+
+                if (this.tumTrajectory.length > 0) {
+                    this.applyTUMFrame(0);
+                }
+            }
+
+            applyTrajectoryScale() {
+                if (this.originalTrajectory.length === 0) return;
+
+                console.log(`应用轨迹尺度: ${this.trajectoryScale.toFixed(2)}x`);
+
+                if (this.anchorSet) {
+                    this.recalculateTrajectoryWithAnchor();
+                } else {
+                    for (let i = 0; i < this.originalTrajectory.length; i++) {
+                        const frame = this.originalTrajectory[i];
+
+                        this.tumTrajectory[i] = {
+                            timestamp: frame.timestamp,
+                            position: {
+                                x: frame.position.x * this.trajectoryScale,
+                                y: frame.position.y * this.trajectoryScale,
+                                z: frame.position.z * this.trajectoryScale
+                            },
+                            quaternion: {
+                                x: frame.quaternion.x,
+                                y: frame.quaternion.y,
+                                z: frame.quaternion.z,
+                                w: frame.quaternion.w
+                            }
+                        };
+                    }
+                }
+
+                if (this.anchorSet) {
+                    this.applyScaleAfterAnchorTransform();
+                }
+
+                console.log(`轨迹尺度应用完成`);
+            }
+
+            applyScaleAfterAnchorTransform() {
+                if (!this.anchorSet || this.originalTrajectory.length === 0) return;
+
+                const orig = this.originalFirstFrame;
+                const origPos = new BABYLON.Vector3(orig.position.x, orig.position.y, orig.position.z);
+
+                // Normalize original first-frame quaternion once to reuse for all frames
+                const oq = { x: orig.quaternion.x, y: orig.quaternion.y, z: orig.quaternion.z, w: orig.quaternion.w };
+                this.normalizeQuaternion(oq);
+                const origQuatForScale = new BABYLON.Quaternion(oq.x, oq.y, oq.z, oq.w);
+
+                const rotationBase = this.anchorQuaternion.multiply(BABYLON.Quaternion.Inverse(origQuatForScale));
+
+                for (let i = 0; i < this.tumTrajectory.length; i++) {
+                    const originalFrame = this.originalTrajectory[i];
+                    const originalFramePos = new BABYLON.Vector3(originalFrame.position.x, originalFrame.position.y, originalFrame.position.z);
+
+                    const originalRelativePos = originalFramePos.subtract(origPos);
+
+                    const scaledRelativePos = originalRelativePos.scale(this.trajectoryScale);
+
+                    const rotatedScaledPos = scaledRelativePos.rotateByQuaternionToRef(rotationBase, new BABYLON.Vector3());
+
+                    const finalPos = this.anchorPosition.add(rotatedScaledPos);
+
+                    this.tumTrajectory[i].position.x = finalPos.x;
+                    this.tumTrajectory[i].position.y = finalPos.y;
+                    this.tumTrajectory[i].position.z = finalPos.z;
+                }
+            }
+
+
+            setupKeyboardControls() {
+                window.addEventListener('keydown', (event) => {
+                    this.keyboardState[event.code] = true;
+
+                    if (!this.keyboardInterval && this.keyboardControlEnabled) {
+                        this.startKeyboardControlLoop();
+                    }
+
+                    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
+                        event.preventDefault();
+                    }
+                });
+
+                window.addEventListener('keyup', (event) => {
+                    this.keyboardState[event.code] = false;
+
+                    if (!this.hasAnyKeyPressed()) {
+                        this.stopKeyboardControlLoop();
+                    }
+                });
+
+                window.addEventListener('blur', () => {
+                    this.keyboardState = {};
+                    this.stopKeyboardControlLoop();
+                });
+            }
+
+            hasAnyKeyPressed() {
+                const controlKeys = [
+                    'KeyW', 'KeyS', 'KeyA', 'KeyD', // WSAD移动
+                    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', // 俯仰偏航
+                    'KeyJ', 'KeyK' // 横滚
+                ];
+                return controlKeys.some(key => this.keyboardState[key]);
+            }
+
+            startKeyboardControlLoop() {
+                if (this.keyboardInterval) return;
+
+                this.keyboardInterval = setInterval(() => {
+                    this.processKeyboardInput();
+                }, 16); // 约60FPS
+            }
+
+            stopKeyboardControlLoop() {
+                if (this.keyboardInterval) {
+                    clearInterval(this.keyboardInterval);
+                    this.keyboardInterval = null;
+                }
+            }
+
+            processKeyboardInput() {
+                if (!this.camera || !this.keyboardControlEnabled || this.isPlaybackCameraLocked()) return;
+
+                let moved = false;
+                const moveSpeed = this.movementSpeed;
+                const rotationSpeed = this.rotationSpeed * Math.PI / 180;
+
+                const forward = this.camera.getDirection(BABYLON.Vector3.Forward());
+                const right = this.camera.getDirection(BABYLON.Vector3.Right());
+                const up = this.camera.getDirection(BABYLON.Vector3.Up());
+
+                const moveVector = this.ZERO_VECTOR.clone();
+
+                if (this.keyboardState['KeyW']) { // 前进
+                    moveVector.addInPlace(forward.scale(moveSpeed));
+                    moved = true;
+                }
+                if (this.keyboardState['KeyS']) { // 后退
+                    moveVector.addInPlace(forward.scale(-moveSpeed));
+                    moved = true;
+                }
+                if (this.keyboardState['KeyA']) { // 左移
+                    moveVector.addInPlace(right.scale(-moveSpeed));
+                    moved = true;
+                }
+                if (this.keyboardState['KeyD']) { // 右移
+                    moveVector.addInPlace(right.scale(moveSpeed));
+                    moved = true;
+                }
+                if (this.keyboardState['KeyQ']) { // 上升
+                    moveVector.addInPlace(up.scale(moveSpeed));
+                    moved = true;
+                }
+                if (this.keyboardState['KeyE']) { // 下降
+                    moveVector.addInPlace(up.scale(-moveSpeed));
+                    moved = true;
+                }
+
+                if (moveVector.length() > 0) {
+                    this.camera.position.addInPlace(moveVector);
+                }
+
+                let rotationChanged = false;
+
+                if (this.keyboardState['ArrowUp']) { // 向上看
+                    if (!this.camera.rotationQuaternion) {
+                        this.camera.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(this.camera.rotation.x, this.camera.rotation.y, this.camera.rotation.z);
+                    }
+                    const pitchQuat = BABYLON.Quaternion.FromEulerAngles(rotationSpeed, 0, 0);
+                    this.camera.rotationQuaternion = this.camera.rotationQuaternion.multiply(pitchQuat);
+                    rotationChanged = true;
+                }
+                if (this.keyboardState['ArrowDown']) { // 向下看
+                    if (!this.camera.rotationQuaternion) {
+                        this.camera.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(this.camera.rotation.x, this.camera.rotation.y, this.camera.rotation.z);
+                    }
+                    const pitchQuat = BABYLON.Quaternion.FromEulerAngles(-rotationSpeed, 0, 0);
+                    this.camera.rotationQuaternion = this.camera.rotationQuaternion.multiply(pitchQuat);
+                    rotationChanged = true;
+                }
+
+                // 左右方向键 - 偏航
+                if (this.keyboardState['ArrowLeft']) { // 向左转
+                    if (!this.camera.rotationQuaternion) {
+                        this.camera.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(this.camera.rotation.x, this.camera.rotation.y, this.camera.rotation.z);
+                    }
+                    const yawQuat = BABYLON.Quaternion.FromEulerAngles(0, rotationSpeed, 0);
+                    this.camera.rotationQuaternion = yawQuat.multiply(this.camera.rotationQuaternion);
+                    rotationChanged = true;
+                }
+                if (this.keyboardState['ArrowRight']) { // 向右转
+                    if (!this.camera.rotationQuaternion) {
+                        this.camera.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(this.camera.rotation.x, this.camera.rotation.y, this.camera.rotation.z);
+                    }
+                    const yawQuat = BABYLON.Quaternion.FromEulerAngles(0, -rotationSpeed, 0);
+                    this.camera.rotationQuaternion = yawQuat.multiply(this.camera.rotationQuaternion);
+                    rotationChanged = true;
+                }
+
+                // JK键 - 横滚
+                if (this.keyboardState['KeyJ']) { // 左横滚
+                    if (!this.camera.rotationQuaternion) {
+                        this.camera.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(this.camera.rotation.x, this.camera.rotation.y, this.camera.rotation.z);
+                    }
+                    const rollQuat = BABYLON.Quaternion.FromEulerAngles(0, 0, -rotationSpeed);
+                    this.camera.rotationQuaternion = this.camera.rotationQuaternion.multiply(rollQuat);
+                    rotationChanged = true;
+                }
+                if (this.keyboardState['KeyK']) { // 右横滚
+                    if (!this.camera.rotationQuaternion) {
+                        this.camera.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(this.camera.rotation.x, this.camera.rotation.y, this.camera.rotation.z);
+                    }
+                    const rollQuat = BABYLON.Quaternion.FromEulerAngles(0, 0, rotationSpeed);
+                    this.camera.rotationQuaternion = this.camera.rotationQuaternion.multiply(rollQuat);
+                    rotationChanged = true;
+                }
+            }
+
+            toggleKeyboardControl() {
+                if (this.isPlaybackCameraLocked()) {
+                    this.updateStatus('轨迹播放中，先暂停或停止后再切换键盘控制');
+                    return;
+                }
+
+                this.keyboardControlEnabled = !this.keyboardControlEnabled;
+
+                if (!this.keyboardControlEnabled) {
+                    this.stopKeyboardControlLoop();
+                    this.keyboardState = {};
+                }
+
+                console.log(`键盘控制: ${this.keyboardControlEnabled ? '启用' : '禁用'}`);
+                this.syncInteractionUi();
+                this.updateStatus(`键盘控制${this.keyboardControlEnabled ? '已启用' : '已禁用'}`);
+            }
+
+            toggleMouseInvert() {
+                this.mouseInvertEnabled = !this.mouseInvertEnabled;
+                this.updateMouseSensitivity();
+
+                const checkbox = document.getElementById('mouseInvertCheckbox');
+                if (checkbox) {
+                    checkbox.checked = this.mouseInvertEnabled;
+                }
+
+                console.log(`鼠标反转: ${this.mouseInvertEnabled ? '启用' : '禁用'}`);
+                this.updateStatus(`鼠标拖动方向${this.mouseInvertEnabled ? '已反转' : '已恢复默认'}`);
+            }
+
+            diagnosePerformance() {
+                console.log('=== 性能诊断报告 ===');
+                console.log('当前FPS:', this.currentFPS);
+
+                if (this.engine) {
+                    console.log('引擎信息:');
+                    console.log('  WebGL版本:', this.engine.webGLVersion);
+                    console.log('  硬件缩放级别:', this.engine.getHardwareScalingLevel());
+                    console.log('  抗锯齿:', this.engine.isStencilEnable);
+                }
+
+                if (this.scene) {
+                    console.log('场景信息:');
+                    console.log('  活动网格数:', this.scene.getActiveMeshes().length);
+                    console.log('  总网格数:', this.scene.meshes.length);
+                    console.log('  材质数:', this.scene.materials.length);
+                    console.log('  纹理数:', this.scene.textures.length);
+                }
+
+                if (this.currentMesh) {
+                    console.log('当前网格信息:');
+                    console.log('  顶点数:', this.currentMesh.getTotalVertices());
+                    console.log('  索引数:', this.currentMesh.getTotalIndices());
+                    console.log('  面数:', this.currentMesh.getTotalIndices() / 3);
+                }
+
+                const gl = this.engine._gl;
+                if (gl) {
+                    console.log('WebGL状态:');
+                    console.log('  最大纹理尺寸:', gl.getParameter(gl.MAX_TEXTURE_SIZE));
+                    console.log('  最大视口尺寸:', gl.getParameter(gl.MAX_VIEWPORT_DIMS));
+                    console.log('  渲染器:', gl.getParameter(gl.RENDERER));
+
+                    const renderer = gl.getParameter(gl.RENDERER).toLowerCase();
+                    const isIntegrated = renderer.includes('intel') || renderer.includes('integrated');
+                    const isDiscrete = renderer.includes('nvidia') || renderer.includes('amd') || renderer.includes('radeon');
+
+                    console.log('显卡类型判断:');
+                    console.log('  集成显卡:', isIntegrated ? '是' : '否');
+                    console.log('  独立显卡:', isDiscrete ? '是' : '否');
+
+                    if (isDiscrete && this.currentFPS < 30) {
+                        console.warn('⚠️ 独立显卡性能异常！可能的原因:');
+                        console.warn('  1. 驱动程序问题');
+                        console.warn('  2. 浏览器没有使用硬件加速');
+                        console.warn('  3. WebGL上下文创建问题');
+                        console.warn('  4. 电源管理限制性能');
+                    }
+                }
+
+                console.log('==================');
+                this.updateStatus('性能诊断完成，请查看控制台');
+            }
+        }
+    </script>
+</body>
+
+</html>

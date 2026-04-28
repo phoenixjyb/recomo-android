@@ -188,6 +188,15 @@ private fun MotionRunnerLeftRail(
                     speedLabel = state.speedLabel,
                     metrics = state.leftMetrics
                 )
+
+                // Music progress bar — Studio Dance only
+                if (state.isStudioDance) {
+                    MusicProgressBar(
+                        progress = state.musicProgress,
+                        timeLabel = state.musicTimeLabel,
+                        fileName = state.musicFileName
+                    )
+                }
             }
 
             Text(
@@ -429,42 +438,59 @@ private fun VideoBackdrop(
     onSurfaceReady: (android.view.SurfaceHolder) -> Unit,
     onSurfaceDestroyed: () -> Unit
 ) {
-    Box(modifier = modifier.background(Color.Black)) {
-        if (!state.showSurfaceFeed && state.bitmapFrame != null) {
-            androidx.compose.foundation.Image(
-                bitmap = state.bitmapFrame.asImageBitmap(),
-                contentDescription = state.headerPillLabel,
-                modifier = Modifier.fillMaxSize()
-            )
+    Box(
+        modifier = modifier.background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        // Use the actual video frame aspect ratio when available; fall back
+        // to 16:9 before the first frame arrives so the layout has a stable shape.
+        val videoAspectRatio = if (state.bitmapFrame != null && state.bitmapFrame.width > 0 && state.bitmapFrame.height > 0) {
+            state.bitmapFrame.width.toFloat() / state.bitmapFrame.height.toFloat()
         } else {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    RunVideoSurfaceView(context).apply {
-                        setZOrderMediaOverlay(false)
-                        setOnSurfaceReadyListener(onSurfaceReady)
-                        setOnSurfaceDestroyedListener(onSurfaceDestroyed)
-                    }
-                }
-            )
+            16f / 9f
         }
-
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0x24000000), Color.Transparent, Color(0x40000000))
-                    )
+                .fillMaxWidth()
+                .aspectRatio(videoAspectRatio)
+        ) {
+            if (!state.showSurfaceFeed && state.bitmapFrame != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = state.bitmapFrame.asImageBitmap(),
+                    contentDescription = state.headerPillLabel,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
                 )
-        )
+            } else {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        RunVideoSurfaceView(context).apply {
+                            setZOrderMediaOverlay(false)
+                            setOnSurfaceReadyListener(onSurfaceReady)
+                            setOnSurfaceDestroyedListener(onSurfaceDestroyed)
+                        }
+                    }
+                )
+            }
 
-        if (state.bitmapFrame == null && !state.showSurfaceFeed) {
-            EmptyFeedMessage(
-                title = state.emptyTitle,
-                detail = state.emptyDetail,
-                modifier = Modifier.align(Alignment.Center)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0x24000000), Color.Transparent, Color(0x40000000))
+                        )
+                    )
             )
+
+            if (state.bitmapFrame == null && !state.showSurfaceFeed) {
+                EmptyFeedMessage(
+                    title = state.emptyTitle,
+                    detail = state.emptyDetail,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
     }
 }
@@ -1123,6 +1149,49 @@ private fun PanelSurface(
         border = BorderStroke(1.dp, StudioChrome.panelBorder)
     ) {
         content()
+    }
+}
+
+@Composable
+private fun MusicProgressBar(
+    progress: Float,
+    timeLabel: String,
+    fileName: String?
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = fileName ?: "Music",
+                color = Color(0x55E91E63),
+                fontFamily = StudioMono,
+                fontSize = 10.sp,
+                maxLines = 1
+            )
+            Text(
+                text = timeLabel,
+                color = Color(0x99E9EDF2),
+                fontFamily = StudioMono,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0x14E91E63))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .height(2.dp)
+                    .background(Brush.horizontalGradient(listOf(Color(0xFFE91E63), Color(0xFF7B5EFF))))
+            )
+        }
     }
 }
 

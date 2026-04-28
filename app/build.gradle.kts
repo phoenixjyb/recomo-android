@@ -27,9 +27,11 @@ android {
     val openvinsEigenRoot = rootProject.projectDir.resolve("../../external/eigen").absolutePath
     val openvinsOpenCvDir = rootProject.projectDir.resolve("../../external/opencv-mobile/prebuilt/sdk/native/jni").absolutePath
     val openvinsBoostRoot = rootProject.projectDir.resolve("../../external/Boost-for-Android/build/out/arm64-v8a").absolutePath
-    val openvinsEnable = "ON"
-    val openvinsDepsOnly = "OFF"
-    val openvinsLinkOpenCv = "ON"
+    val openvinsEnable = (findProperty("openvinsEnable") as String?)?.uppercase() ?: "OFF"
+    val openvinsDepsOnly = (findProperty("openvinsDepsOnly") as String?)?.uppercase() ?: "OFF"
+    val openvinsLinkOpenCv =
+        (findProperty("openvinsLinkOpenCv") as String?)?.uppercase()
+            ?: if (openvinsEnable == "ON" || openvinsDepsOnly == "ON") "ON" else "OFF"
 
     defaultConfig {
         applicationId = "com.recomo.remotecontrol"
@@ -120,6 +122,17 @@ android {
                 "/META-INF/{AL2.0,LGPL2.1}",
                 "/META-INF/INDEX.LIST",
                 "/META-INF/io.netty.versions.properties"
+            )
+        }
+        // sherpa-onnx AAR (via :common) bundles its own libonnxruntime.so;
+        // :app also has onnxruntime-android:1.17.0. Both are ABI-compatible;
+        // pickFirst resolves the duplicate for all ABIs.
+        jniLibs {
+            pickFirsts += setOf(
+                "lib/arm64-v8a/libonnxruntime.so",
+                "lib/armeabi-v7a/libonnxruntime.so",
+                "lib/x86/libonnxruntime.so",
+                "lib/x86_64/libonnxruntime.so"
             )
         }
     }

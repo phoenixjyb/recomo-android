@@ -25,6 +25,12 @@ import kotlinx.serialization.json.put
 class UserLibraryViewModel @Inject constructor(
     private val gatewayClient: OrinGatewayClient
 ) : ViewModel() {
+    val sessionDetail: StateFlow<UserLibrarySessionDetail?> = gatewayClient.robotState
+        .map { robotState ->
+            parseSessionDetail(robotState?.get("library_detail")?.jsonObject)
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     val state: StateFlow<UserLibraryState> = combine(
         gatewayClient.robotState,
         gatewayClient.connectionState
@@ -80,6 +86,21 @@ class UserLibraryViewModel @Inject constructor(
                     put("type", "LibraryCmd")
                     put("action", "list")
                     put("target", target.wireName())
+                }
+            )
+        }
+    }
+
+    fun requestSessionDetail(target: UserLibraryTarget, sessionId: String) {
+        val normalized = sessionId.trim()
+        if (normalized.isBlank()) return
+        viewModelScope.launch {
+            gatewayClient.sendControl(
+                buildJsonObject {
+                    put("type", "LibraryCmd")
+                    put("action", "get")
+                    put("target", target.wireName())
+                    put("session_id", normalized)
                 }
             )
         }
@@ -181,10 +202,20 @@ class UserLibraryViewModel @Inject constructor(
             ?: emptyList()
     }
 
-    private fun UserLibraryTarget.wireName(): String {
-        return when (this) {
-            UserLibraryTarget.FoiSession -> "foi_session"
-            UserLibraryTarget.PoiSession -> "poi_session"
-        }
+    private fun parseSessionDetail(detail: JsonObject?): UserLibrarySessionDetail? {
+        val target = userLibraryTargetFromWireName(
+            detail?.get("target")?.jsonPrimitive?.contentOrNull
+        ) ?: return null
+        val session = detail?.get("session")?.jsonObject ?: return null
+        val sessionId = session["session_id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+        if (sessionId.isBlank()) return null
+        return UserLibrarySessionDetail(
+            sessionId = sessionId,
+            sessionName = session["session_name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
+            target = target,
+            linkedMap = session["linked_map"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
+            mapName = session["map_name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
+            rawSession = session
+        )
     }
 }

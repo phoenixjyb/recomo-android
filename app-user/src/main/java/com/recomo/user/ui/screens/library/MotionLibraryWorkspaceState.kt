@@ -17,7 +17,8 @@ enum class MotionLibrarySidebarIcon {
     Tour,
     Layers,
     Storage,
-    Download
+    Download,
+    StudioDance
 }
 
 data class MotionLibrarySidebarCategoryUiState(
@@ -49,7 +50,9 @@ data class MotionLibraryEntryUiState(
     val isFavorite: Boolean = false,
     val isSelected: Boolean = false,
     val thumbnailIcon: MotionLibrarySidebarIcon = MotionLibrarySidebarIcon.Product,
-    @DrawableRes val thumbnailRes: Int? = null
+    @DrawableRes val thumbnailRes: Int? = null,
+    val musicFileName: String? = null,
+    val bpm: Int? = null
 )
 
 data class MotionLibraryWorkspaceUiState(
@@ -193,6 +196,12 @@ private fun LibrarySessionSummaryUiItem.toMotionLibraryEntryUiState(
     val tertiaryLabel = robotName.takeIf { it.isNotBlank() }
         ?: frameId.takeIf { it.isNotBlank() }
         ?: "Ready to stage"
+    val isStudioDance = sessionType?.equals("studio_dance", ignoreCase = true) == true
+    val primaryMetaLabel = when {
+        isStudioDance && bpm != null -> "${bpm} BPM · ${type.countLabel(count)}"
+        count > 0 -> type.countLabel(count)
+        else -> "Ready to stage"
+    }
     return MotionLibraryEntryUiState(
         id = sessionId,
         title = displayMotionTitle(),
@@ -200,7 +209,7 @@ private fun LibrarySessionSummaryUiItem.toMotionLibraryEntryUiState(
         typeLabel = normalizedType,
         groupLabel = groupLabel,
         categoryLabel = derivedCategory,
-        primaryMeta = if (count > 0) type.countLabel(count) else "Ready to stage",
+        primaryMeta = primaryMetaLabel,
         secondaryMeta = category.takeIf {
             it.isNotBlank() &&
                 !it.equals(normalizedType, ignoreCase = true) &&
@@ -210,7 +219,9 @@ private fun LibrarySessionSummaryUiItem.toMotionLibraryEntryUiState(
         timestampLabel = "",
         isFavorite = isSelected,
         isSelected = isSelected,
-        thumbnailIcon = derivedCategory.toSidebarIcon()
+        thumbnailIcon = if (isStudioDance) MotionLibrarySidebarIcon.StudioDance else derivedCategory.toSidebarIcon(),
+        musicFileName = musicFile,
+        bpm = bpm
     )
 }
 
@@ -223,5 +234,6 @@ private fun String.toSidebarIcon(): MotionLibrarySidebarIcon =
         "cinematic" -> MotionLibrarySidebarIcon.Cinematic
         "tour" -> MotionLibrarySidebarIcon.Tour
         "shot plans", "saved marks" -> MotionLibrarySidebarIcon.Layers
+        "studio dance" -> MotionLibrarySidebarIcon.StudioDance
         else -> MotionLibrarySidebarIcon.Layers
     }

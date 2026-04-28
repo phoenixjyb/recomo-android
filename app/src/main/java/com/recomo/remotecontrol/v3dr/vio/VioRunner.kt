@@ -2,7 +2,7 @@ package com.recomo.remotecontrol.v3dr.vio
 
 import android.util.Log
 import com.recomo.remotecontrol.v3dr.data.VioBackendType
-import com.recomo.remotecontrol.v3dr.data.model.ImuDataSet
+import com.recomo.common.capture.model.ImuDataSet
 import com.recomo.remotecontrol.v3dr.vio.cloud.CloudSfmVioBackend
 import com.recomo.remotecontrol.v3dr.vio.openvins.OpenVinsBackend
 import kotlinx.coroutines.Dispatchers

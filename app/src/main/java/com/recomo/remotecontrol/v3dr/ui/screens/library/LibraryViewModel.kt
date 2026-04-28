@@ -5,9 +5,9 @@ import android.os.Environment
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.recomo.remotecontrol.v3dr.data.model.UploadStatus
-import com.recomo.remotecontrol.v3dr.upload.UploadRepository
-import com.recomo.remotecontrol.v3dr.util.ThumbnailGenerator
+import com.recomo.common.upload.UploadStatus
+import com.recomo.common.upload.UploadRepository
+import com.recomo.common.capture.util.ThumbnailGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow

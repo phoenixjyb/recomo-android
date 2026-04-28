@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -93,10 +94,18 @@ fun RunVideoPreviewCard(
                 }
             }
 
+            // Use the actual video frame aspect ratio when available; fall back
+            // to 16:9 for the empty/loading state so the card has a reasonable
+            // shape before the first frame arrives.
+            val videoAspectRatio = if (bitmapFrame != null && bitmapFrame.width > 0 && bitmapFrame.height > 0) {
+                bitmapFrame.width.toFloat() / bitmapFrame.height.toFloat()
+            } else {
+                16f / 9f
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
+                    .aspectRatio(videoAspectRatio)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color(0xFF080808))
             ) {
@@ -104,6 +113,7 @@ fun RunVideoPreviewCard(
                     Image(
                         bitmap = bitmapFrame.asImageBitmap(),
                         contentDescription = stringResource(R.string.run_live_preview_title),
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
@@ -164,8 +174,8 @@ fun RunVideoPreviewCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 RunVideoMetric(
-                    label = stringResource(R.string.run_live_preview_stream),
-                    value = state.cameraUrl.ifBlank { "—" },
+                    label = "Source",
+                    value = state.sourceLabel.ifBlank { "—" },
                     modifier = Modifier.weight(1f)
                 )
                 RunVideoMetric(

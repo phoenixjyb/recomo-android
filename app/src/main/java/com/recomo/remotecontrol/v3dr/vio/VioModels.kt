@@ -1,6 +1,6 @@
 package com.recomo.remotecontrol.v3dr.vio
 
-import com.recomo.remotecontrol.v3dr.data.model.ImuSample
+import com.recomo.common.capture.model.ImuSample
 import java.io.File
 
 /**

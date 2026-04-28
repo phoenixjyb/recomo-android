@@ -4,6 +4,10 @@ data class TouchControlWorkspaceState(
     val connected: Boolean = false,
     val connecting: Boolean = false,
     val speedMode: TouchControlSpeedMode = TouchControlSpeedMode.Normal,
+    /** Effective speed profile: user-configured overrides merged over the enum
+     *  defaults. Always use this instead of [speedMode]`.profile` when reading
+     *  actual velocity values. */
+    val effectiveProfile: TouchControlSpeedProfile = TouchControlSpeedMode.Normal.profile,
     val showGrid: Boolean = false,
     val estopActive: Boolean = false,
     val freezeAllActive: Boolean = false,

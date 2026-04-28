@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.recomo.remotecontrol.v3dr.camera.Camera2Controller
+import com.recomo.common.capture.camera.Camera2Controller
 
 private const val TAG = "RecordingScreen"
 

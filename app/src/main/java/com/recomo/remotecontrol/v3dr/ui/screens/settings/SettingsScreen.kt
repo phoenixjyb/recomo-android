@@ -14,10 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.recomo.remotecontrol.v3dr.data.Bitrate
-import com.recomo.remotecontrol.v3dr.data.NetworkProfile
-import com.recomo.remotecontrol.v3dr.data.NetworkProfiles
-import com.recomo.remotecontrol.v3dr.data.Resolution
+import com.recomo.common.settings.Bitrate
+import com.recomo.common.settings.NetworkProfile
+import com.recomo.common.settings.NetworkProfiles
+import com.recomo.common.settings.Resolution
 import com.recomo.remotecontrol.v3dr.data.VioBackendType
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -1,5 +1,7 @@
 package com.recomo.user.ui.screens.library
 
+import com.recomo.user.control.UserLibraryTarget
+
 enum class LibrarySessionType {
     FOI,
     POI
@@ -39,7 +41,11 @@ data class LibrarySessionSummaryUiItem(
     val count: Int = 0,
     val isSelected: Boolean = false,
     val sceneType: String = "",
-    val linkedMap: String = ""
+    val linkedMap: String = "",
+    val libraryTarget: UserLibraryTarget? = null,
+    val sessionType: String? = null,
+    val musicFile: String? = null,
+    val bpm: Int? = null
 )
 
 data class LibrarySummaryUiState(

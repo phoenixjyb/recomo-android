@@ -256,9 +256,11 @@ private fun SelectPhase(
             maps.size == 1 -> maps.first()
             else -> maps.firstOrNull { it.isRecommended }
         }
-        if (bestMap != null && selectedMapId != bestMap.id) {
-            onSelectMap(bestMap.id)
-            delay(300) // brief pause so UI shows selection
+        if (bestMap != null) {
+            if (selectedMapId != bestMap.id) {
+                onSelectMap(bestMap.id)
+                delay(300) // brief pause so UI shows selection
+            }
             onAutoAdvance()
         }
     }

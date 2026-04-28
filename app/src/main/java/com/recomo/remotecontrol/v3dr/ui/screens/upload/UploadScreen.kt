@@ -12,8 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.recomo.remotecontrol.v3dr.data.model.UploadProgress
-import com.recomo.remotecontrol.v3dr.data.model.UploadStatus
+import com.recomo.common.upload.UploadProgress
+import com.recomo.common.upload.UploadStatus
 
 /**
  * Upload management screen
@@ -221,9 +221,10 @@ private fun UploadCard(
             }
 
             // Error message
-            if (upload.status == UploadStatus.FAILED && upload.errorMessage != null) {
+            val errorText = upload.errorMessage
+            if (upload.status == UploadStatus.FAILED && errorText != null) {
                 Text(
-                    text = upload.errorMessage,
+                    text = errorText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )

@@ -47,7 +47,22 @@ data class MotionCreatorCopyPresetUiState(
     val videoFileName: String? = null,
     val sceneType: String = "SimpleTrack",
     val trajectoryId: String = "",
-    val linkedMap: String = ""
+    val linkedMap: String = "",
+    /**
+     * Bundled asset path (relative to `assets/`) of a TUM trajectory that the
+     * SceneViewer should auto-load when the user taps Preview on this preset.
+     * Pre-computed by `scripts/convert_open_loop_to_tum.py` from the joint-space
+     * PnC trajectory JSON, so the preview matches the motion the robot executes.
+     */
+    val previewTumAssetPath: String? = null,
+    /**
+     * Bundled asset path of a single-line TUM containing the scene-frame anchor
+     * pose for this preset. Pre-computed from the trajectory JSON's POI entry
+     * by the same converter script. When set, this overrides the scene's
+     * default anchor, so the trajectory lands at the correct world-frame
+     * position inside the SPZ scene.
+     */
+    val previewAnchorTumAssetPath: String? = null
 )
 
 fun MotionCreatorMode.defaultLabel(): String = when (this) {
@@ -103,7 +118,9 @@ fun defaultCopyStylePresets(): List<MotionCreatorCopyPresetUiState> = listOf(
         videoFileName = "copystyle_video_1.mp4",
         sceneType = "LivePnC",
         trajectoryId = "trajectory_7_from_traj_interpolated_open_loop.json",
-        linkedMap = "t8space-3f"
+        linkedMap = "t8space-3f",
+        previewTumAssetPath = "spzviewer/trajectories/afternoon_tea.tum",
+        previewAnchorTumAssetPath = "spzviewer/trajectories/afternoon_tea_anchor.tum"
     ),
     MotionCreatorCopyPresetUiState(
         id = "cozy_home",
@@ -118,7 +135,9 @@ fun defaultCopyStylePresets(): List<MotionCreatorCopyPresetUiState> = listOf(
         videoFileName = "copystyle_video_2.mp4",
         sceneType = "LivePnC",
         trajectoryId = "trajectory_8_from_traj_interpolated_open_loop.json",
-        linkedMap = "t8space-3f"
+        linkedMap = "t8space-3f",
+        previewTumAssetPath = "spzviewer/trajectories/cozy_home.tum",
+        previewAnchorTumAssetPath = "spzviewer/trajectories/cozy_home_anchor.tum"
     ),
     MotionCreatorCopyPresetUiState(
         id = "master_shots",
@@ -133,7 +152,9 @@ fun defaultCopyStylePresets(): List<MotionCreatorCopyPresetUiState> = listOf(
         videoFileName = "copystyle_video_3.mp4",
         sceneType = "LivePnC",
         trajectoryId = "trajectory_9_from_traj_interpolated_open_loop.json",
-        linkedMap = "t8space-3f"
+        linkedMap = "t8space-3f",
+        previewTumAssetPath = "spzviewer/trajectories/master_shots.tum",
+        previewAnchorTumAssetPath = "spzviewer/trajectories/master_shots_anchor.tum"
     ),
     MotionCreatorCopyPresetUiState(
         id = "my_new_tablet",

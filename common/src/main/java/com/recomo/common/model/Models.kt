@@ -253,6 +253,7 @@ enum class NetworkPreset(
         const val ORIN_CAMERA_WS_PORT = 9091
         const val ORIN_TARGET_PORT = 8082
         const val ORIN_MEDIA_PORT = 8081
+        const val WEBRTC_SIGNALING_PORT = 9092
         
         fun fromName(name: String): NetworkPreset {
             return values().find { it.name == name } ?: ZEROTIER
@@ -281,6 +282,8 @@ enum class NetworkPreset(
         buildWsUrl(if (profile != null) getOrinIp(profile, useTztek) else getOrinIp(useTztek), 8084)
     fun getSignalingUrl(profile: RobotProfile? = null, useTztek: Boolean = true): String =
         buildWsUrl(if (profile != null) getOrinIp(profile, useTztek) else getOrinIp(useTztek), 9077)
+    fun getWebRTCSignalingUrl(profile: RobotProfile? = null, useTztek: Boolean = true): String =
+        buildWsUrl(if (profile != null) getOrinIp(profile, useTztek) else getOrinIp(useTztek), WEBRTC_SIGNALING_PORT)
 }
 
 /**
@@ -462,9 +465,10 @@ data class AppSettings(
     val serviceControlPin: String = "", // PIN for Orin service control (empty = no PIN)
     val useWebRTC: Boolean = false,
     val signalingUrl: String = "",
+    val webrtcSignalingUrl: String = "",
     val trackingMode: TrackingMode = TrackingMode.CAMCONTROL,
     val viewOnly: Boolean = false,
-    val videoSource: VideoSource = VideoSource.WEBSOCKET,  // Video input source
+    val videoSource: VideoSource = VideoSource.WS_ORIN,  // Video input source
     val trackingTargetWidth: Int = 720,
     val trackingTargetHeight: Int = 480
 ) {
@@ -477,7 +481,7 @@ data class AppSettings(
             serviceControlPinEnabled: Boolean = false,
             serviceControlPin: String = "",
             viewOnly: Boolean = false,
-            videoSource: VideoSource = VideoSource.WEBSOCKET,
+            videoSource: VideoSource = VideoSource.WS_ORIN,
             trackingTargetWidth: Int = 720,
             trackingTargetHeight: Int = 480
         ): AppSettings {
@@ -497,6 +501,7 @@ data class AppSettings(
                 serviceControlPin = serviceControlPin,
                 useWebRTC = false,
                 signalingUrl = preset.getSignalingUrl(robotProfile, resolvedUseTztek),
+                webrtcSignalingUrl = preset.getWebRTCSignalingUrl(robotProfile, resolvedUseTztek),
                 trackingMode = TrackingMode.CAMCONTROL,
                 viewOnly = viewOnly,
                 videoSource = videoSource,

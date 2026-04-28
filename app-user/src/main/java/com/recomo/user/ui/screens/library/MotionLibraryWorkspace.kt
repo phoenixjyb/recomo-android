@@ -837,4 +837,5 @@ internal fun sidebarIcon(icon: MotionLibrarySidebarIcon): ImageVector =
         MotionLibrarySidebarIcon.Layers -> Icons.Default.Layers
         MotionLibrarySidebarIcon.Storage -> Icons.Default.Storage
         MotionLibrarySidebarIcon.Download -> Icons.Default.Download
+        MotionLibrarySidebarIcon.StudioDance -> Icons.Default.PlayArrow
     }

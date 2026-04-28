@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -385,9 +386,18 @@ private fun TouchPreviewPane(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black)
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
     ) {
-        previewContent()
+        // Preserve the stream's native 16:9 aspect; black letterbox fills the
+        // rest. Grid overlay lives inside so it aligns to the video frame,
+        // not to the letterboxed container.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+        ) {
+            previewContent()
         if (state.showGrid) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val thirdX = size.width / 3f
@@ -425,6 +435,7 @@ private fun TouchPreviewPane(
                     cap = StrokeCap.Round
                 )
             }
+        }
         }
     }
 }

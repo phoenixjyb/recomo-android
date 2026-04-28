@@ -1,8 +1,8 @@
 package com.recomo.remotecontrol.v3dr.vio
 
 import android.util.Log
-import com.recomo.remotecontrol.v3dr.data.model.ImuDataSet
-import com.recomo.remotecontrol.v3dr.data.model.ImuSample
+import com.recomo.common.capture.model.ImuDataSet
+import com.recomo.common.capture.model.ImuSample
 import java.io.File
 
 class VioSyncBuilder {

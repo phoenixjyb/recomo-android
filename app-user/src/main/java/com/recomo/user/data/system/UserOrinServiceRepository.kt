@@ -34,6 +34,9 @@ class UserOrinServiceRepository @Inject constructor(
             connectTimeoutMillis = 10_000
             socketTimeoutMillis = 15_000
         }
+        engine {
+            proxy = null
+        }
     }
 
     suspend fun fetchStatus(): Result<Map<String, UserOrinServiceStatus>> = runCatching {

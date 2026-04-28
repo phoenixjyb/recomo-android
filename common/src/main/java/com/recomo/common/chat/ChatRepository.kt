@@ -38,25 +38,28 @@ enum class ChatConnectionState {
  *   repo.sendMessage("Plan a shot from A to B")
  *   repo.incomingEvents.collect { event -> ... }
  */
-class ChatRepository {
+class ChatRepository : ChatTransport {
 
     private val client = HttpClient(CIO) {
         install(WebSockets) {
             pingInterval = 20_000
+        }
+        engine {
+            proxy = null
         }
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true; isLenient = true; encodeDefaults = true }
 
     private val _connectionState = MutableStateFlow(ChatConnectionState.DISCONNECTED)
-    val connectionState: StateFlow<ChatConnectionState> = _connectionState.asStateFlow()
+    override val connectionState: StateFlow<ChatConnectionState> = _connectionState.asStateFlow()
 
     private val _conversationId = MutableStateFlow<String?>(null)
-    val conversationId: StateFlow<String?> = _conversationId.asStateFlow()
+    override val conversationId: StateFlow<String?> = _conversationId.asStateFlow()
 
     /** All incoming server events (chunks, done, task status, errors). */
     private val _incomingEvents = MutableSharedFlow<ServerEvent>(extraBufferCapacity = 64)
-    val incomingEvents: SharedFlow<ServerEvent> = _incomingEvents.asSharedFlow()
+    override val incomingEvents: SharedFlow<ServerEvent> = _incomingEvents.asSharedFlow()
 
     @Volatile private var session: DefaultClientWebSocketSession? = null
     private val sendMutex = Mutex()
@@ -72,12 +75,12 @@ class ChatRepository {
      * @param deviceId Unique device identifier
      * @param existingConversationId Resume a previous conversation (optional)
      */
-    fun connect(
+    override fun connect(
         url: String,
         deviceId: String,
-        existingConversationId: String? = null,
-        robotProfile: String? = null,
-        locationId: String? = null
+        existingConversationId: String?,
+        robotProfile: String?,
+        locationId: String?
     ) {
         this.serverUrl = url
         this.deviceId = deviceId
@@ -127,7 +130,7 @@ class ChatRepository {
         }
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         connectionJob?.cancel()
         connectionJob = null
         scope.launch {
@@ -140,7 +143,11 @@ class ChatRepository {
     /**
      * Send a user message to the conversation.
      */
-    suspend fun sendMessage(content: String, context: ChatContext? = null) {
+    override suspend fun sendMessage(
+        content: String,
+        context: ChatContext?,
+        attachments: UserAttachments?
+    ) {
         val convId = _conversationId.value
         if (convId == null) {
             Log.w(TAG, "Cannot send: no conversation ID yet")
@@ -151,14 +158,15 @@ class ChatRepository {
             ChatSendMessage(
                 conversationId = convId,
                 content = content,
-                context = context
+                context = context,
+                attachments = attachments
             )
         )
         sendRaw(msg)
     }
 
     /** Cancel in-progress assistant generation. */
-    suspend fun cancelGeneration() {
+    override suspend fun cancelGeneration() {
         val convId = _conversationId.value ?: return
         val msg = json.encodeToString(
             ChatCancel.serializer(),
@@ -179,6 +187,14 @@ class ChatRepository {
         }
     }
 
+    /**
+     * Capabilities reported by the server in the `connected` handshake.
+     * `null` until handshake completes; v1 servers leave it at the default
+     * (all flags false), v2 servers populate it.
+     */
+    @Volatile override var serverCapabilities: ChatCapabilities = ChatCapabilities()
+        private set
+
     private suspend fun handleFrame(text: String) {
         try {
             val obj = json.parseToJsonElement(text).jsonObject
@@ -186,10 +202,30 @@ class ChatRepository {
 
             when (type) {
                 ChatMessageType.CONNECTED -> {
-                    val msg = json.decodeFromJsonElement(ChatConnected.serializer(), obj)
-                    _conversationId.value = msg.conversationId
-                    _incomingEvents.emit(ServerEvent.Connected(msg))
-                    Log.i(TAG, "Chat connected, conversation=${msg.conversationId}")
+                    // Try v2 first (with capabilities); fall back to v1 if it fails.
+                    val v2 = runCatching {
+                        json.decodeFromJsonElement(ChatConnectedV2.serializer(), obj)
+                    }.getOrNull()
+                    if (v2 != null) {
+                        serverCapabilities = v2.capabilities
+                        _conversationId.value = v2.conversationId
+                        // Emit v1-compatible event so existing collectors keep working.
+                        _incomingEvents.emit(
+                            ServerEvent.Connected(
+                                ChatConnected(
+                                    conversationId = v2.conversationId,
+                                    serverVersion = v2.serverVersion
+                                )
+                            )
+                        )
+                        Log.i(TAG, "Chat connected (v2), conversation=${v2.conversationId}, caps=${v2.capabilities}")
+                    } else {
+                        val msg = json.decodeFromJsonElement(ChatConnected.serializer(), obj)
+                        serverCapabilities = ChatCapabilities()
+                        _conversationId.value = msg.conversationId
+                        _incomingEvents.emit(ServerEvent.Connected(msg))
+                        Log.i(TAG, "Chat connected (v1), conversation=${msg.conversationId}")
+                    }
                 }
                 ChatMessageType.ASSISTANT_CHUNK -> {
                     val msg = json.decodeFromJsonElement(AssistantChunk.serializer(), obj)
@@ -207,10 +243,35 @@ class ChatRepository {
                     val msg = json.decodeFromJsonElement(TrajectoryReady.serializer(), obj)
                     _incomingEvents.emit(ServerEvent.TrajectoryAvailable(msg))
                 }
+                ChatMessageType.PROMPT_HINT -> {
+                    val msg = json.decodeFromJsonElement(PromptHint.serializer(), obj)
+                    _incomingEvents.emit(ServerEvent.PromptHintReceived(msg))
+                }
+                ChatMessageType.CANDIDATES -> {
+                    val msg = json.decodeFromJsonElement(CandidateSet.serializer(), obj)
+                    _incomingEvents.emit(ServerEvent.CandidatesReady(msg))
+                }
                 ChatMessageType.ERROR -> {
-                    val msg = json.decodeFromJsonElement(ChatError.serializer(), obj)
-                    _incomingEvents.emit(ServerEvent.ServerError(msg))
-                    Log.e(TAG, "Server error: [${msg.code}] ${msg.message}")
+                    // v2 errors carry `retryable`; try v2 then fall back.
+                    val v2 = runCatching {
+                        json.decodeFromJsonElement(ChatErrorV2.serializer(), obj)
+                    }.getOrNull()
+                    if (v2 != null) {
+                        _incomingEvents.emit(
+                            ServerEvent.ServerError(
+                                ChatError(
+                                    code = v2.code,
+                                    message = v2.message,
+                                    conversationId = v2.conversationId
+                                )
+                            )
+                        )
+                        Log.e(TAG, "Server error v2: [${v2.code}] ${v2.message} retryable=${v2.retryable}")
+                    } else {
+                        val msg = json.decodeFromJsonElement(ChatError.serializer(), obj)
+                        _incomingEvents.emit(ServerEvent.ServerError(msg))
+                        Log.e(TAG, "Server error: [${msg.code}] ${msg.message}")
+                    }
                 }
                 else -> {
                     Log.w(TAG, "Unknown message type: $type")
@@ -219,6 +280,36 @@ class ChatRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse frame: ${e.message}", e)
         }
+    }
+
+    // ── v2 client → server methods ────────────────────────────────
+
+    /** v2: notify the backend that the user picked a candidate (analytics). */
+    override suspend fun selectCandidate(messageId: String, candidateId: String) {
+        val convId = _conversationId.value ?: return
+        val payload = json.encodeToString(
+            SelectCandidate.serializer(),
+            SelectCandidate(
+                conversationId = convId,
+                messageId = messageId,
+                candidateId = candidateId
+            )
+        )
+        sendRaw(payload)
+    }
+
+    /** v2: ask the backend to refine an existing candidate set. */
+    override suspend fun refinePrompt(parentMessageId: String, refinement: String) {
+        val convId = _conversationId.value ?: return
+        val payload = json.encodeToString(
+            RefinePrompt.serializer(),
+            RefinePrompt(
+                conversationId = convId,
+                parentMessageId = parentMessageId,
+                refinement = refinement
+            )
+        )
+        sendRaw(payload)
     }
 
     private fun scheduleReconnect() {
@@ -246,4 +337,7 @@ sealed class ServerEvent {
     data class TrajectoryAvailable(val msg: TrajectoryReady) : ServerEvent()
     data class ServerError(val msg: ChatError) : ServerEvent()
     data class ConnectionError(val reason: String) : ServerEvent()
+    // v2
+    data class PromptHintReceived(val msg: PromptHint) : ServerEvent()
+    data class CandidatesReady(val msg: CandidateSet) : ServerEvent()
 }

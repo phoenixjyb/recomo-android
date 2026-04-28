@@ -57,6 +57,9 @@ class UserVideoStreamClient(
             requestTimeoutMillis = 60_000
             connectTimeoutMillis = 10_000
         }
+        engine {
+            proxy = null
+        }
     }
 
     private val connectMutex = Mutex()

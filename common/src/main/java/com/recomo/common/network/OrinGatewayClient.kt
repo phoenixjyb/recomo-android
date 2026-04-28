@@ -10,10 +10,20 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,11 +37,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 private const val TAG = "OrinGatewayClient"
@@ -42,6 +55,9 @@ class OrinGatewayClient constructor(
 ) {
     private val client = HttpClient(CIO) {
         install(WebSockets)
+        engine {
+            proxy = null // Bypass system proxy for direct ZeroTier connections
+        }
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connectMutex = Mutex()
@@ -75,6 +91,14 @@ class OrinGatewayClient constructor(
     private var stateJob: kotlinx.coroutines.Job? = null
     private var heartbeatJob: kotlinx.coroutines.Job? = null
 
+    /** Host reachable via ZeroTier/LAN, extracted from the last `connect(baseUrl)` call.
+     * Used to build sibling-port HTTP URLs (trajectory-deploy on :9078, etc). */
+    @Volatile private var connectedHost: String? = null
+
+    private val _connectedHostFlow = MutableStateFlow<String?>(null)
+    /** Public host for building sibling-port HTTP URLs (e.g. service control on :8083). */
+    val connectedHostFlow: StateFlow<String?> = _connectedHostFlow.asStateFlow()
+
     suspend fun connect(baseUrl: String) {
         connectMutex.withLock {
             if (_connectionState.value is ConnectionState.Connecting ||
@@ -97,6 +121,16 @@ class OrinGatewayClient constructor(
             trimmed.endsWith("/control") -> trimmed.removeSuffix("/control") + "/state"
             else -> "$trimmed/state"
         }
+
+        // Stash the bare host so sibling-port helpers (deployTrajectory on :9078
+        // etc) can hit the same Orin over plain HTTP without reparsing.
+        connectedHost = runCatching {
+            val stripped = trimmed
+                .substringAfter("://")
+                .substringBefore('/')
+            stripped.substringBefore(':').ifBlank { null }
+        }.getOrNull()
+        _connectedHostFlow.value = connectedHost
 
         controlJob = scope.launch { connectControl(controlUrl) }
         stateJob = scope.launch { connectState(stateUrl) }
@@ -126,7 +160,71 @@ class OrinGatewayClient constructor(
             _stateConnected.value = false
         }
 
+        connectedHost = null
+        _connectedHostFlow.value = null
         updateConnectionState()
+    }
+
+    /**
+     * Sealed result from [deployTrajectory]. Success carries the Orin-side
+     * absolute path where the file landed; Failure carries a human-readable
+     * reason suitable for a toast.
+     */
+    sealed class DeployResult {
+        data class Success(val path: String, val bytes: Long) : DeployResult()
+        data class Failure(val reason: String) : DeployResult()
+    }
+
+    /**
+     * Upload a cloud-authored trajectory file to the Orin
+     * trajectory-deploy service (port 9078). The service drops the file
+     * under `fixed_position_traj_dir` and PnC picks it up with whatever
+     * converter matches the extension (TUM/txt/json). After success the
+     * caller can issue a normal `FixedPositionCmd("select", stem)`
+     * through [sendControl].
+     *
+     * @param filename   must match `^[A-Za-z0-9_.-]+\.(tum|txt|json)$`.
+     * @param content    raw file body (TUM/txt lines, or a JSON string).
+     *                   Passed verbatim; the service does no parsing.
+     * @param overwrite  overwrite an existing same-named file (default true).
+     */
+    suspend fun deployTrajectory(
+        filename: String,
+        content: String,
+        overwrite: Boolean = true
+    ): DeployResult = withContext(Dispatchers.IO) {
+        val host = connectedHost
+            ?: return@withContext DeployResult.Failure("gateway host unknown — connect first")
+        val url = "http://$host:9078/api/deploy_trajectory"
+        val envelope = buildJsonObject {
+            put("filename", filename)
+            put("overwrite", overwrite)
+            put("content", content)
+        }
+        try {
+            val response = client.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(JsonObject.serializer(), envelope))
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                Log.w(TAG, "deployTrajectory HTTP ${response.status.value}: $body")
+                return@withContext DeployResult.Failure("HTTP ${response.status.value}: $body")
+            }
+            val parsed = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+                ?: return@withContext DeployResult.Failure("bad response: $body")
+            val ok = parsed["ok"]?.jsonPrimitive?.booleanOrNull == true
+            if (!ok) {
+                val reason = parsed["reason"]?.jsonPrimitive?.contentOrNull ?: body
+                return@withContext DeployResult.Failure(reason)
+            }
+            val path = parsed["path"]?.jsonPrimitive?.contentOrNull ?: ""
+            val bytes = parsed["bytes"]?.jsonPrimitive?.longOrNull ?: 0L
+            DeployResult.Success(path, bytes)
+        } catch (e: Exception) {
+            Log.e(TAG, "deployTrajectory failed: ${e.message}", e)
+            DeployResult.Failure(e.message ?: "deploy failed")
+        }
     }
 
     suspend fun sendControl(payload: JsonObject) {

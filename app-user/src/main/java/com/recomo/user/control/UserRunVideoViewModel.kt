@@ -1,8 +1,12 @@
 package com.recomo.user.control
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaFormat
+import android.os.Build
+import android.provider.Settings
+import android.util.Log
 import android.view.Surface
 import android.view.SurfaceHolder
 import androidx.lifecycle.ViewModel
@@ -11,12 +15,18 @@ import com.recomo.common.model.ConnectionState
 import com.recomo.common.model.Telemetry
 import com.recomo.common.model.VideoFrame
 import com.recomo.common.model.VideoFrameFormat
+import com.recomo.common.model.VideoSource
+import com.recomo.common.network.WebRTCReceiver
+import com.recomo.common.video.PipelineState
 import com.recomo.common.video.VideoDecoder
+import com.recomo.common.video.VideoSourceManager
+import com.recomo.user.R
 import com.recomo.user.data.postrecord.UserPostRecordRepository
 import com.recomo.user.data.UserSettingsRepository
 import com.recomo.user.data.video.UserVideoRecorder
 import com.recomo.user.data.video.UserVideoStreamClient
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,6 +39,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 
 private const val JPEG_FRAME_INTERVAL_MS = 120L
@@ -36,6 +48,7 @@ private const val FRAME_STALE_TIMEOUT_MS = 2000L
 
 @HiltViewModel
 class UserRunVideoViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val userSettingsRepository: UserSettingsRepository,
     private val videoRecorder: UserVideoRecorder,
     private val postRecordRepository: UserPostRecordRepository,
@@ -49,6 +62,7 @@ class UserRunVideoViewModel @Inject constructor(
 
     private val videoDecoder = VideoDecoder()
     private val videoStreamClient = UserVideoStreamClient(json)
+    val videoSourceManager = VideoSourceManager(appContext)
     private val _active = MutableStateFlow(false)
     private val _cameraUrl = MutableStateFlow("")
     private val _latestBitmap = MutableStateFlow<Bitmap?>(null)
@@ -58,6 +72,7 @@ class UserRunVideoViewModel @Inject constructor(
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
     private val _recordingElapsedMs = MutableStateFlow(0L)
     private val _recordingError = MutableStateFlow<String?>(null)
+    private val _cameraPermissionError = MutableStateFlow<String?>(null)
 
     private var connectJob: Job? = null
     private var frameStaleJob: Job? = null
@@ -70,6 +85,9 @@ class UserRunVideoViewModel @Inject constructor(
     private var hasReceivedKeyframe = false
     private var recordingStartedAtMs = 0L
     private var latestTelemetry: Telemetry? = null
+    private var webrtcReceiver: WebRTCReceiver? = null
+    private val webrtcInitMutex = Mutex()
+    private var webrtcSignalingUrl: String? = null
 
     private data class VideoUiInputs(
         val cameraUrl: String,
@@ -79,66 +97,172 @@ class UserRunVideoViewModel @Inject constructor(
         val lastFrameAtMs: Long,
         val isRecording: Boolean,
         val recordingElapsedMs: Long,
-        val recordingError: String?
+        val recordingError: String?,
+        val videoSource: VideoSource,
+        val hdmiPipelineState: PipelineState,
+        val hdmiErrorMessage: String?,
+        val cameraPermissionError: String?
+    )
+
+    private data class StreamInputs(
+        val cameraUrl: String,
+        val connectionState: ConnectionState,
+        val telemetry: Telemetry?,
+        val frameFormat: VideoFrameFormat?,
+        val lastFrameAtMs: Long
+    )
+
+    private data class RuntimeInputs(
+        val isRecording: Boolean,
+        val recordingElapsedMs: Long,
+        val recordingError: String?,
+        val videoSource: VideoSource,
+        val hdmiPipelineState: PipelineState
+    )
+
+    private data class HdmiInputs(
+        val hdmiErrorMessage: String?,
+        val cameraPermissionError: String?
     )
 
     val latestBitmap: StateFlow<Bitmap?> = _latestBitmap.asStateFlow()
+
+    /**
+     * Capture the current live frame as a base64-encoded JPEG thumbnail for
+     * keyframe records. Matches `:app` `VideoViewModel.captureThumbnailBase64`:
+     * scales to 160 px wide (preserving aspect ratio), JPEG quality 70,
+     * NO_WRAP base64 encoding.
+     *
+     * Returns null if no decoded frame is available. The JPEG-path sources
+     * (WS Phone, HDMI USB) populate `_latestBitmap`; H.264/H.265 paths render
+     * directly to the surface and return null here — the `FoiRecord.thumbnail`
+     * field is optional so null is acceptable downstream.
+     */
+    fun captureThumbnailBase64(): String? {
+        val source = _latestBitmap.value ?: return null
+        return try {
+            val targetWidth = 160
+            val targetHeight = (source.height.toFloat() / source.width * targetWidth).toInt()
+                .coerceAtLeast(1)
+            val scaled = Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+            val stream = java.io.ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, 70, stream)
+            if (scaled !== source) {
+                scaled.recycle()
+            }
+            android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)
+        } catch (e: Exception) {
+            Log.e("UserRunVideoVM", "captureThumbnailBase64 failed", e)
+            null
+        }
+    }
+
     val state: StateFlow<UserRunVideoUiState>
         get() = uiState
 
     val uiState: StateFlow<UserRunVideoUiState> = combine(
-        _cameraUrl,
-        videoStreamClient.connectionState,
-        videoStreamClient.telemetry,
-        _frameFormat,
-        _lastFrameAtMs,
-        _isRecording,
-        _recordingElapsedMs,
-        _recordingError
-    ) { values ->
-        val cameraUrl = values[0] as String
-        val connectionState = values[1] as ConnectionState
-        val telemetry = values[2] as? Telemetry
-        val frameFormat = values[3] as? VideoFrameFormat
-        val lastFrameAtMs = values[4] as Long
-        val isRecording = values[5] as Boolean
-        val recordingElapsedMs = values[6] as Long
-        val recordingError = values[7] as? String
+        combine(
+            _cameraUrl,
+            videoStreamClient.connectionState,
+            videoStreamClient.telemetry,
+            _frameFormat,
+            _lastFrameAtMs
+        ) { cameraUrl, connectionState, telemetry, frameFormat, lastFrameAtMs ->
+            StreamInputs(
+                cameraUrl = cameraUrl,
+                connectionState = connectionState,
+                telemetry = telemetry,
+                frameFormat = frameFormat,
+                lastFrameAtMs = lastFrameAtMs
+            )
+        },
+        combine(
+            _isRecording,
+            _recordingElapsedMs,
+            _recordingError,
+            videoSourceManager.currentSource,
+            videoSourceManager.connectionState
+        ) { isRecording, recordingElapsedMs, recordingError, currentSource, hdmiState ->
+            RuntimeInputs(
+                isRecording = isRecording,
+                recordingElapsedMs = recordingElapsedMs,
+                recordingError = recordingError,
+                videoSource = currentSource,
+                hdmiPipelineState = hdmiState
+            )
+        },
+        combine(videoSourceManager.errorMessage, _cameraPermissionError) { hdmiErrorMessage, cameraPermissionError ->
+            HdmiInputs(
+                hdmiErrorMessage = hdmiErrorMessage,
+                cameraPermissionError = cameraPermissionError
+            )
+        }
+    ) { stream, runtime, hdmi ->
         VideoUiInputs(
-            cameraUrl = cameraUrl,
-            connectionState = connectionState,
-            telemetry = telemetry,
-            frameFormat = frameFormat,
-            lastFrameAtMs = lastFrameAtMs,
-            isRecording = isRecording,
-            recordingElapsedMs = recordingElapsedMs,
-            recordingError = recordingError
+            cameraUrl = stream.cameraUrl,
+            connectionState = stream.connectionState,
+            telemetry = stream.telemetry,
+            frameFormat = stream.frameFormat,
+            lastFrameAtMs = stream.lastFrameAtMs,
+            isRecording = runtime.isRecording,
+            recordingElapsedMs = runtime.recordingElapsedMs,
+            recordingError = runtime.recordingError,
+            videoSource = runtime.videoSource,
+            hdmiPipelineState = runtime.hdmiPipelineState,
+            hdmiErrorMessage = hdmi.hdmiErrorMessage,
+            cameraPermissionError = hdmi.cameraPermissionError
         )
     }.map { inputs ->
-        val streamHealthy = inputs.connectionState is ConnectionState.Connected &&
+        val isHdmi = inputs.videoSource == VideoSource.HDMI_USB
+        val isWebRTC = inputs.videoSource == VideoSource.WEBRTC_ORIN
+        val hdmiError = inputs.cameraPermissionError ?: inputs.hdmiErrorMessage
+        val isHdmiActive = isHdmi && inputs.hdmiPipelineState == PipelineState.CONNECTED
+        val isHdmiError = isHdmi && (inputs.hdmiPipelineState == PipelineState.ERROR || hdmiError != null)
+        // WS stream: check WS client connected + frames flowing
+        val wsStreamHealthy = inputs.connectionState is ConnectionState.Connected &&
             inputs.lastFrameAtMs > 0L
-        val canRecord = streamHealthy
+        // WebRTC: WS client is disconnected, but frames still update _lastFrameAtMs via onVideoFrame callback
+        val webrtcStreamHealthy = isWebRTC && inputs.lastFrameAtMs > 0L
+        val streamHealthy = isHdmiActive || wsStreamHealthy || webrtcStreamHealthy
+        val canRecord = (wsStreamHealthy || webrtcStreamHealthy)
+
+        val sourceLabel = when (inputs.videoSource) {
+            VideoSource.WS_PHONE -> "WS Phone"
+            VideoSource.WS_ORIN -> "WS Orin"
+            VideoSource.WEBRTC_ORIN -> "WebRTC Orin"
+            VideoSource.HDMI_USB -> "HDMI USB"
+        }
+
         UserRunVideoUiState(
-            cameraUrl = inputs.cameraUrl,
+            cameraUrl = if (isHdmi) "HDMI USB" else inputs.cameraUrl,
+            sourceLabel = sourceLabel,
             connectionState = inputs.connectionState,
             detailState = when {
+                isHdmiActive -> UserRunVideoDetailState.ReceivingFrames
+                isHdmiError -> UserRunVideoDetailState.Error
+                isHdmi -> UserRunVideoDetailState.WaitingFrames
+                wsStreamHealthy || webrtcStreamHealthy -> UserRunVideoDetailState.ReceivingFrames
+                isWebRTC -> UserRunVideoDetailState.WaitingFrames
                 inputs.connectionState is ConnectionState.Error -> UserRunVideoDetailState.Error
-                streamHealthy -> UserRunVideoDetailState.ReceivingFrames
                 inputs.connectionState is ConnectionState.Connected -> UserRunVideoDetailState.WaitingFrames
                 inputs.cameraUrl.isBlank() -> UserRunVideoDetailState.NoUrl
                 else -> UserRunVideoDetailState.Idle
             },
-            errorMessage = (inputs.connectionState as? ConnectionState.Error)?.message,
-            resolutionLabel = inputs.telemetry?.resolution?.let { "${it.width}×${it.height}" } ?: "--",
-            codecLabel = inputs.telemetry?.codec?.ifBlank { null } ?: when (inputs.frameFormat) {
+            errorMessage = if (isHdmi) {
+                hdmiError
+            } else {
+                (inputs.connectionState as? ConnectionState.Error)?.message
+            },
+            resolutionLabel = if (isHdmiActive) "1920×1080" else inputs.telemetry?.resolution?.let { "${it.width}×${it.height}" } ?: "--",
+            codecLabel = if (isHdmiActive) "UVC" else inputs.telemetry?.codec?.ifBlank { null } ?: when (inputs.frameFormat) {
                 VideoFrameFormat.JPEG -> "JPEG"
                 VideoFrameFormat.H26X -> "H.26x"
                 null -> null
             },
-            fpsLabel = inputs.telemetry?.fps?.takeIf { it > 0f }?.let { String.format("%2.0f fps", it) },
-            showBitmapFrame = inputs.frameFormat == VideoFrameFormat.JPEG,
-            showSurfaceFrame = inputs.frameFormat != VideoFrameFormat.JPEG,
-            canReconnect = inputs.cameraUrl.isNotBlank(),
+            fpsLabel = if (isHdmiActive) "30 fps" else inputs.telemetry?.fps?.takeIf { it > 0f }?.let { String.format("%2.0f fps", it) },
+            showBitmapFrame = !isHdmi && inputs.frameFormat == VideoFrameFormat.JPEG,
+            showSurfaceFrame = isHdmi || inputs.frameFormat != VideoFrameFormat.JPEG,
+            canReconnect = !isHdmi && inputs.cameraUrl.isNotBlank(),
             isStreaming = streamHealthy,
             canRecord = canRecord || inputs.isRecording,
             isRecording = inputs.isRecording,
@@ -154,12 +278,45 @@ class UserRunVideoViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             userSettingsRepository.appSettings.collect { settings ->
-                // Always use orinCameraUrl — this is the Orin's JPEG WS server at port 9091.
-                // Do not fall back to cameraUrl (phone WebSocket) as it is a different service.
-                val resolvedUrl = settings.orinCameraUrl
+                val source = settings.videoSource
+                val wasNonWs = videoSourceManager.isHdmiSource()
+                val resolvedUrl = when (source) {
+                    VideoSource.WS_PHONE -> settings.cameraUrl
+                    else -> settings.orinCameraUrl
+                }
                 _cameraUrl.value = resolvedUrl
-                if (_active.value) {
-                    ensureConnected(resolvedUrl, force = activeStreamUrl != resolvedUrl)
+
+                // Stop any previous pipeline that doesn't match the new source
+                when (source) {
+                    VideoSource.WS_PHONE, VideoSource.WS_ORIN -> {
+                        videoSourceManager.stop()
+                        shutdownWebRTC()
+                        if (_active.value) {
+                            ensureConnected(resolvedUrl, force = wasNonWs || activeStreamUrl != resolvedUrl)
+                        }
+                    }
+                    VideoSource.WEBRTC_ORIN -> {
+                        videoSourceManager.stop()
+                        disconnectStream()
+                        if (settings.webrtcSignalingUrl.isNotBlank()) {
+                            initializeWebRTC(settings.webrtcSignalingUrl)
+                        }
+                    }
+                    VideoSource.HDMI_USB -> {
+                        _cameraPermissionError.value = null
+                        disconnectStream()
+                        shutdownWebRTC()
+                        // Release decoder so it doesn't hold the Surface — UVC needs exclusive access
+                        videoDecoder.release()
+                        isDecoderInitialized = false
+                        hasReceivedKeyframe = false
+                        val s = surface
+                        if (s != null) {
+                            videoSourceManager.switchSource(VideoSource.HDMI_USB, s)
+                        } else {
+                            videoSourceManager.switchSource(VideoSource.HDMI_USB, null)
+                        }
+                    }
                 }
             }
         }
@@ -240,6 +397,15 @@ class UserRunVideoViewModel @Inject constructor(
 
     fun onSurfaceReady(surface: Surface, width: Int, height: Int) {
         this.surface = surface
+        // If HDMI USB is selected but pipeline wasn't started (surface was null at settings time),
+        // start it now that the surface is available.
+        if (videoSourceManager.isHdmiSource()) {
+            if (!videoSourceManager.isRunning()) {
+                Log.i("UserRunVideoVM", "Surface ready, starting deferred HDMI pipeline")
+                videoSourceManager.start(surface)
+            }
+            return // UVC has exclusive surface access — don't initialize decoder
+        }
         if (_frameFormat.value != VideoFrameFormat.JPEG) {
             initializeDecoder(
                 decoderConfig.copy(
@@ -252,10 +418,36 @@ class UserRunVideoViewModel @Inject constructor(
 
     fun onSurfaceDestroyed() {
         this.surface = null
+        if (videoSourceManager.isHdmiSource()) {
+            videoSourceManager.stop()
+        }
         viewModelScope.launch {
             videoDecoder.release()
             isDecoderInitialized = false
             hasReceivedKeyframe = false
+        }
+    }
+
+    fun onCameraPermissionResult(granted: Boolean) {
+        if (!videoSourceManager.isHdmiSource()) {
+            _cameraPermissionError.value = null
+            return
+        }
+
+        if (!granted) {
+            videoSourceManager.stop()
+            _cameraPermissionError.value =
+                appContext.getString(R.string.run_live_preview_camera_permission_required)
+            return
+        }
+
+        _cameraPermissionError.value = null
+        videoSourceManager.checkHdmiDeviceAvailability()
+
+        val currentSurface = surface
+        if (currentSurface != null && !videoSourceManager.isRunning()) {
+            Log.i("UserRunVideoVM", "Camera permission granted, retrying HDMI pipeline")
+            videoSourceManager.start(currentSurface)
         }
     }
 
@@ -274,6 +466,8 @@ class UserRunVideoViewModel @Inject constructor(
     }
 
     private fun disconnectStream() {
+        // Note: WebRTC is NOT shut down here — it's managed by the settings flow
+        // in init{} and only shut down in onCleared() or when useWebRTC is toggled off.
         if (_isRecording.value) {
             stopRecording()
         }
@@ -433,8 +627,77 @@ class UserRunVideoViewModel @Inject constructor(
         }
     }
 
+    private suspend fun initializeWebRTC(signalingUrl: String) {
+        val trimmedUrl = signalingUrl.trim()
+        if (trimmedUrl.isBlank()) return
+
+        webrtcInitMutex.withLock {
+            val existing = webrtcReceiver
+            if (existing != null && webrtcSignalingUrl == trimmedUrl) {
+                when (existing.connectionState.value) {
+                    is ConnectionState.Connected,
+                    is ConnectionState.Connecting -> return
+                    else -> { /* reinitialize */ }
+                }
+            }
+
+            existing?.close()
+            webrtcReceiver = null
+            webrtcSignalingUrl = trimmedUrl
+
+            try {
+                val receiver = WebRTCReceiver(
+                    context = appContext,
+                    signalingUrl = trimmedUrl,
+                    roomId = "camcontrol-room",
+                    peerId = buildPeerId("user"),
+                    scope = viewModelScope,
+                    onVideoFrame = { frameData ->
+                        _frameFormat.value = VideoFrameFormat.JPEG
+                        _lastFrameAtMs.value = System.currentTimeMillis()
+                        scheduleFrameStaleTimeout()
+                        if (_isRecording.value) {
+                            viewModelScope.launch {
+                                videoRecorder.writeJpegFrame(frameData)
+                            }
+                        }
+                        val frame = VideoFrame(
+                            data = frameData,
+                            timestamp = System.currentTimeMillis(),
+                            isKeyframe = true
+                        )
+                        viewModelScope.launch { renderBitmapFrame(frame) }
+                    }
+                )
+                receiver.initialize()
+                receiver.onKeyframeNeeded = { receiver.requestKeyframe() }
+                receiver.connect()
+                webrtcReceiver = receiver
+                Log.i("UserRunVideoVM", "WebRTC receiver connected to $trimmedUrl")
+            } catch (e: Exception) {
+                Log.e("UserRunVideoVM", "WebRTC init failed: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun shutdownWebRTC() {
+        webrtcReceiver?.close()
+        webrtcReceiver = null
+        webrtcSignalingUrl = null
+    }
+
+    private fun buildPeerId(prefix: String): String {
+        val androidId = try {
+            Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
+        } catch (_: Exception) { "unknown" }
+        val raw = "$prefix-${Build.MANUFACTURER}-${Build.MODEL}-${androidId.take(6)}"
+        return raw.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').take(64)
+    }
+
     override fun onCleared() {
         super.onCleared()
+        videoSourceManager.stop()
+        shutdownWebRTC()
         disconnectStream()
         videoStreamClient.close()
         viewModelScope.launch {
@@ -452,6 +715,7 @@ private fun formatRecordingElapsed(elapsedMs: Long): String {
 
 data class UserRunVideoUiState(
     val cameraUrl: String = "",
+    val sourceLabel: String = "",
     val connectionState: ConnectionState = ConnectionState.Disconnected,
     val detailState: UserRunVideoDetailState = UserRunVideoDetailState.Idle,
     val errorMessage: String? = null,

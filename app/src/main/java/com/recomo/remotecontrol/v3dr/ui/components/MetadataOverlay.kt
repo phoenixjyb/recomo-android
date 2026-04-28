@@ -9,8 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.recomo.remotecontrol.v3dr.data.model.ImuDataSet
-import com.recomo.remotecontrol.v3dr.data.model.ImuSample
+import com.recomo.common.capture.model.ImuDataSet
+import com.recomo.common.capture.model.ImuSample
 import kotlin.math.sqrt
 
 /**

@@ -2,7 +2,20 @@ package com.recomo.user.control
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
+import com.recomo.common.chat.BasePoseSnapshot
+import com.recomo.common.chat.ExecutionRef
+import com.recomo.common.chat.GimbalSnapshot
+import com.recomo.common.chat.MapSnapshot
+import com.recomo.common.chat.RobotStateSnapshot
 import com.recomo.common.chat.TrajectoryAttachment
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import com.recomo.common.model.ConnectionState
 import com.recomo.common.model.FrameRecord
 import com.recomo.common.model.SessionDetail
@@ -29,6 +42,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -57,6 +71,8 @@ class UserRunCommandViewModel @Inject constructor(
     private val _localSessions = MutableStateFlow<List<LocalTrajectorySessionSummary>>(emptyList())
     private val _sessionFolderPath = MutableStateFlow("")
     private val _localSessionPreview = MutableStateFlow<UserLocalSessionPreviewState?>(null)
+    private val _musicFileName = MutableStateFlow<String?>(null)
+    private val _musicOffsetMs = MutableStateFlow(0L)
     private var statusOverrideJob: Job? = null
 
     val selectedTrajectory: StateFlow<String?> = _selectedTrajectory.asStateFlow()
@@ -65,6 +81,8 @@ class UserRunCommandViewModel @Inject constructor(
     val localSessions: StateFlow<List<LocalTrajectorySessionSummary>> = _localSessions.asStateFlow()
     val sessionFolderPath: StateFlow<String> = _sessionFolderPath.asStateFlow()
     val localSessionPreview: StateFlow<UserLocalSessionPreviewState?> = _localSessionPreview.asStateFlow()
+    val musicFileName: StateFlow<String?> = _musicFileName.asStateFlow()
+    val musicOffsetMs: StateFlow<Long> = _musicOffsetMs.asStateFlow()
 
     val state: StateFlow<UserRunCommandState> = combine(
         gatewayClient.connectionState,
@@ -98,7 +116,10 @@ class UserRunCommandViewModel @Inject constructor(
             sceneType = currentSceneType,
             connectionStatus = connectionStatus,
             executorState = parsed.executorState,
-            stage2ExecutionStatus = parsed.stage2ExecutionStatus
+            stage2ExecutionStatus = parsed.stage2ExecutionStatus,
+            isStudioDance = currentSceneType == SceneType.StudioDance,
+            musicFileName = _musicFileName.value,
+            musicOffsetMs = _musicOffsetMs.value
         )
     }.stateIn(
         viewModelScope,
@@ -163,6 +184,21 @@ class UserRunCommandViewModel @Inject constructor(
         _selectedTrajectory.value = trajectory.trim().ifBlank { null }
         _sceneType.value = sceneType
         _trajectoryHandoff.value = null
+        _musicFileName.value = null
+        _musicOffsetMs.value = 0L
+        clearTransientStatus()
+    }
+
+    fun selectStudioDanceTrajectory(
+        trajectoryId: String,
+        musicFile: String?,
+        musicOffsetMs: Long = 0L
+    ) {
+        _selectedTrajectory.value = trajectoryId.trim().ifBlank { null }
+        _sceneType.value = SceneType.StudioDance
+        _trajectoryHandoff.value = null
+        _musicFileName.value = musicFile
+        _musicOffsetMs.value = musicOffsetMs
         clearTransientStatus()
     }
 
@@ -202,6 +238,17 @@ class UserRunCommandViewModel @Inject constructor(
         when (_sceneType.value) {
             SceneType.LivePnC -> {
                 sendFixedPositionCmd(action = "start", trajectory = trajectory)
+            }
+            SceneType.StudioDance -> {
+                // Studio Dance uses the same SimpleTrack executor on the gateway;
+                // music playback is handled pad-side by StudioDanceMusicPlayerViewModel.
+                sendRunControl(
+                    action = "run",
+                    trajectoryId = trajectory,
+                    deadman = deadman,
+                    loop = loop,
+                    speedScale = speedScale
+                )
             }
             else -> {
                 sendRunControl(
@@ -317,6 +364,145 @@ class UserRunCommandViewModel @Inject constructor(
     fun unfreezeAll() {
         sendSafety("unfreeze_all")
         showTransientStatus("Unfreeze all")
+    }
+
+    /**
+     * Build a lean robot-state snapshot from the latest gateway frame for
+     * AI-chat v2.1 attachments. Returns null if no state has arrived yet.
+     * Arm joints are converted radians → degrees to match the protocol.
+     */
+    fun buildRobotStateSnapshot(): RobotStateSnapshot? {
+        val state = gatewayClient.robotState.value ?: return null
+        val armRad = state["arm"]?.jsonObject?.get("q")?.jsonArray
+            ?.mapNotNull { it.jsonPrimitive.doubleOrNull }
+        val armDeg = armRad?.map { it * 180.0 / Math.PI }
+        val gimbalQ = state["gimbal"]?.jsonObject?.get("q")?.jsonArray
+            ?.mapNotNull { it.jsonPrimitive.doubleOrNull } ?: emptyList()
+        val gimbal = if (gimbalQ.isNotEmpty()) {
+            GimbalSnapshot(
+                yaw = gimbalQ.getOrNull(0),
+                pitch = gimbalQ.getOrNull(1),
+                roll = gimbalQ.getOrNull(2)
+            )
+        } else null
+        val base = state["base"]?.jsonObject
+        val basePose = base?.let {
+            val x = it["x"]?.jsonPrimitive?.doubleOrNull
+            val y = it["y"]?.jsonPrimitive?.doubleOrNull
+            val yaw = it["yaw"]?.jsonPrimitive?.doubleOrNull
+            if (x != null && y != null && yaw != null) BasePoseSnapshot(x, y, yaw) else null
+        }
+        val locationId = state["maps"]?.jsonObject?.get("current_location")
+            ?.jsonPrimitive?.contentOrNull
+        val map = locationId?.let { MapSnapshot(locationId = it, name = it) }
+        val mode = when (_sceneType.value) {
+            SceneType.LivePnC -> "live_pnc"
+            SceneType.SimpleTrack -> "simple_track"
+            else -> null
+        }
+        if (armDeg == null && gimbal == null && basePose == null && map == null && mode == null) {
+            return null
+        }
+        return RobotStateSnapshot(
+            armQDeg = armDeg,
+            gimbal = gimbal,
+            basePose = basePose,
+            map = map,
+            mode = mode,
+            capturedAtMs = System.currentTimeMillis()
+        )
+    }
+
+    /** Outcome of the AI chat → Orin "deploy then select" path. */
+    sealed class ExecuteCandidateResult {
+        /** JSON landed on Orin and `FixedPositionCmd("select")` was issued. */
+        data class Ready(val orinPath: String, val sceneType: SceneType) : ExecuteCandidateResult()
+        /** Download of [ExecutionRef.executeUrl] failed. */
+        data class DownloadFailed(val reason: String) : ExecuteCandidateResult()
+        /** Orin deploy service rejected the payload / wasn't reachable. */
+        data class DeployFailed(val reason: String) : ExecuteCandidateResult()
+    }
+
+    private val cloudDeployHttp = HttpClient(CIO) { engine { proxy = null } }
+
+    /**
+     * Drive the AI-chat "Execute" flow in parallel with CopyStyle presets:
+     *   1. Fetch the trajectory file at [ExecutionRef.executeUrl] as text.
+     *   2. POST the raw body to the Orin trajectory-deploy service via
+     *      [OrinGatewayClient.deployTrajectory] — the service drops it
+     *      under `fixed_position_traj_dir` and PnC's own converter
+     *      handles the format (we don't parse the body).
+     *   3. Call [selectTrajectoryWithSceneType] with the filename stem
+     *      so MotionRunner + `FixedPositionCmd` pipeline treat it
+     *      exactly like a CopyStyle preset.
+     *
+     * Returns a sealed result so the caller can toast / navigate.
+     */
+    suspend fun executeCloudAuthoredTrajectory(
+        ref: ExecutionRef,
+        displayName: String? = null,
+    ): ExecuteCandidateResult =
+        withContext(Dispatchers.IO) {
+            val sceneType = when (ref.sceneType) {
+                "LivePnC" -> SceneType.LivePnC
+                "SimpleTrack" -> SceneType.SimpleTrack
+                else -> SceneType.LivePnC
+            }
+            val bodyText = try {
+                cloudDeployHttp.get(ref.executeUrl).bodyAsText()
+            } catch (e: Exception) {
+                Log.w("UserRunCmdVM", "executeUrl download failed: ${e.message}", e)
+                return@withContext ExecuteCandidateResult.DownloadFailed(e.message ?: "download failed")
+            }
+            if (bodyText.isBlank()) {
+                return@withContext ExecuteCandidateResult.DownloadFailed("empty trajectory body")
+            }
+            when (val result = gatewayClient.deployTrajectory(
+                filename = ref.executeFilename,
+                content = bodyText,
+                overwrite = ref.overwrite
+            )) {
+                is OrinGatewayClient.DeployResult.Failure ->
+                    return@withContext ExecuteCandidateResult.DeployFailed(result.reason)
+                is OrinGatewayClient.DeployResult.Success -> {
+                    // Gateway's scan_fixed_position_trajectories()
+                    // stores names WITH the .json extension and
+                    // FixedPositionCmd("select") does an exact-string
+                    // match, so pass the filename verbatim (no
+                    // substringBeforeLast('.') trick).
+                    val selectName = ref.executeFilename
+                    Log.i("UserRunCmdVM",
+                        "deployed ${ref.executeFilename} → select=$selectName display=$displayName")
+                    selectTrajectoryWithSceneType(selectName, sceneType)
+                    // Keep the UI label clean: show the AI candidate's
+                    // user-facing name (e.g. "aigen-1_0023-0004") rather
+                    // than the opaque JSON filename. MotionRunner
+                    // prefers trajectoryHandoff.sourceName over the
+                    // wire id when readiness=Ready.
+                    val label = displayName?.takeIf { it.isNotBlank() } ?: selectName
+                    _trajectoryHandoff.value = UserTrajectoryHandoffState(
+                        sourceName = label,
+                        sessionId = selectName,
+                        trajectoryId = selectName,
+                        readiness = UserTrajectoryHandoffReadiness.Ready,
+                        note = null,
+                    )
+                    return@withContext ExecuteCandidateResult.Ready(result.path, sceneType)
+                }
+            }
+        }
+
+    fun persistChatTrajectoryAsLocalSession(rawJson: JsonObject, sessionId: String) {
+        val path = _sessionFolderPath.value
+        if (path.isBlank() || sessionId.isBlank()) return
+        viewModelScope.launch {
+            val ok = localTrajectorySessionRepository.saveSessionFile(
+                rawJson = rawJson,
+                sessionId = sessionId,
+                filesystemRootPath = path
+            )
+            if (ok) refreshLocalSessions(path)
+        }
     }
 
     fun beginChatTrajectoryHandoff(attachment: TrajectoryAttachment) {
@@ -558,7 +744,7 @@ class UserRunCommandViewModel @Inject constructor(
         // Pick the authoritative status source based on scene type
         val source = when (currentSceneType) {
             SceneType.LivePnC -> fixedPosition ?: runBlock
-            SceneType.SimpleTrack -> simpleTrack ?: runBlock
+            SceneType.SimpleTrack, SceneType.StudioDance -> simpleTrack ?: runBlock
             SceneType.Unknown -> runBlock ?: simpleTrack ?: fixedPosition
         }
         val statusRaw = source?.get("status")?.jsonPrimitive?.contentOrNull?.trim().orEmpty()

@@ -26,7 +26,8 @@ class UserMediaManager @Inject constructor(
         Recordings("Recordings"),
         CopyStyle("CopyStyle"),
         Library("Library"),
-        Downloads("Downloads")
+        Downloads("Downloads"),
+        StudioDanceMusic("StudioDanceMusic")
     }
 
     private val root: File by lazy {

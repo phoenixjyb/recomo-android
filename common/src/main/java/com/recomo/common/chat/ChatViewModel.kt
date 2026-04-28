@@ -5,10 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.recomo.common.preview.TrajectoryPreview
 import com.recomo.common.preview.TrajectorySample
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 import java.util.UUID
+import javax.inject.Inject
 
 private const val TAG = "ChatViewModel"
 
@@ -24,10 +26,20 @@ data class PreviewTrajectoryState(
  *
  * Manages message history, WebSocket connection to the cloud chat server,
  * streaming assistant responses, and trajectory attachment handling.
+ *
+ * The transport (`WS_BRIDGE` vs `DIRECT_REST`) is resolved at
+ * construction time via [ChatTransportConfigProvider], which the app
+ * layer binds against user settings. Existing behaviour preserved:
+ * default config is `WS_BRIDGE`, identical to pre-Hilt `ChatRepository()`.
  */
-class ChatViewModel : ViewModel() {
+@HiltViewModel
+class ChatViewModel @Inject constructor(
+    transportConfigProvider: ChatTransportConfigProvider
+) : ViewModel() {
 
-    val repository = ChatRepository()
+    val repository: ChatTransport = ChatTransportFactory.create(
+        transportConfigProvider.currentConfig()
+    )
     private val trajectoryResolver = TrajectoryResolver()
 
     // ── Observable state ──────────────────────────────────────────
@@ -50,6 +62,20 @@ class ChatViewModel : ViewModel() {
     /** Trajectory ready for 3D preview (set after download). */
     private val _previewTrajectory = MutableStateFlow<PreviewTrajectoryState?>(null)
     val previewTrajectory: StateFlow<PreviewTrajectoryState?> = _previewTrajectory.asStateFlow()
+
+    // ── v2 state ──────────────────────────────────────────────────
+
+    /** Latest prompt hint from the server (welcome or clarification). */
+    private val _promptHint = MutableStateFlow<PromptHint?>(null)
+    val promptHint: StateFlow<PromptHint?> = _promptHint.asStateFlow()
+
+    /** Latest candidate set from the server (typically 5 trajectories). */
+    private val _candidates = MutableStateFlow<CandidateSet?>(null)
+    val candidates: StateFlow<CandidateSet?> = _candidates.asStateFlow()
+
+    /** Currently selected candidate within the active set. */
+    private val _selectedCandidateId = MutableStateFlow<String?>(null)
+    val selectedCandidateId: StateFlow<String?> = _selectedCandidateId.asStateFlow()
 
     // Buffer for accumulating streaming chunks
     private var streamBuffer = StringBuilder()
@@ -77,18 +103,19 @@ class ChatViewModel : ViewModel() {
      * Send a user message. Adds it to local history immediately,
      * then sends to server.
      */
-    fun sendMessage(content: String) {
+    fun sendMessage(content: String, attachments: UserAttachments? = null) {
         if (content.isBlank()) return
 
         val userMsg = ChatMessageItem(
             id = UUID.randomUUID().toString(),
             role = ChatRole.USER,
-            content = content.trim()
+            content = content.trim(),
+            userSnapshot = attachments?.snapshot
         )
         _messages.value = _messages.value + userMsg
 
         viewModelScope.launch {
-            repository.sendMessage(content.trim())
+            repository.sendMessage(content.trim(), attachments = attachments)
         }
     }
 
@@ -96,11 +123,70 @@ class ChatViewModel : ViewModel() {
         viewModelScope.launch { repository.cancelGeneration() }
     }
 
+    // ── v2 public API ─────────────────────────────────────────────
+
+    /** v2: mark a candidate as the user's selection. Echoes to backend. */
+    fun selectCandidate(candidateId: String) {
+        val set = _candidates.value ?: return
+        if (set.candidates.none { it.id == candidateId }) return
+        _selectedCandidateId.value = candidateId
+        // Reflect on the message that holds the candidate set so the UI can
+        // render the chosen card with a highlight.
+        val current = _messages.value.toMutableList()
+        val idx = current.indexOfFirst { it.candidateSet?.messageId == set.messageId }
+        if (idx >= 0) {
+            current[idx] = current[idx].copy(selectedCandidateId = candidateId)
+            _messages.value = current
+        }
+        viewModelScope.launch {
+            repository.selectCandidate(messageId = set.messageId, candidateId = candidateId)
+        }
+    }
+
+    /** v2: ask the backend for a refined batch ("shorter", "more dramatic"). */
+    fun refinePrompt(refinement: String) {
+        val parent = _candidates.value ?: return
+        viewModelScope.launch {
+            repository.refinePrompt(parentMessageId = parent.messageId, refinement = refinement)
+        }
+    }
+
+    /** v2: clear the local "selected" state (user tapped "Pick another"). */
+    fun clearCandidateSelection() {
+        _selectedCandidateId.value = null
+        val set = _candidates.value ?: return
+        val current = _messages.value.toMutableList()
+        val idx = current.indexOfFirst { it.candidateSet?.messageId == set.messageId }
+        if (idx >= 0) {
+            current[idx] = current[idx].copy(selectedCandidateId = null)
+            _messages.value = current
+        }
+    }
+
+    /** v2: convenience — return the candidate the user picked, or null. */
+    fun selectedCandidate(): TrajectoryCandidate? {
+        val set = _candidates.value ?: return null
+        val id = _selectedCandidateId.value ?: return null
+        return set.candidates.firstOrNull { it.id == id }
+    }
+
     /** Download a trajectory attachment and return the result. */
     fun downloadTrajectory(attachment: TrajectoryAttachment, onResult: (TrajectoryDownloadResult) -> Unit) {
         viewModelScope.launch {
             val result = trajectoryResolver.downloadTrajectory(attachment.downloadUrl)
             onResult(result)
+        }
+    }
+
+    /**
+     * Fetch a raw text body (used for TUM trajectories served by the
+     * bridge). The viewer reads these directly via `InlineTum` —
+     * avoids the planar-flattening that happens when we route through
+     * the session-JSON schema.
+     */
+    fun downloadText(url: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            onResult(trajectoryResolver.downloadText(url))
         }
     }
 
@@ -275,6 +361,44 @@ class ChatViewModel : ViewModel() {
             is ServerEvent.ConnectionError -> {
                 addSystemMessage("Connection lost: ${event.reason}")
             }
+
+            // ── v2 events ─────────────────────────────────────────
+            is ServerEvent.PromptHintReceived -> {
+                _promptHint.value = event.msg
+                // Surface as a dedicated assistant message so it's anchored
+                // in the scroll position; the UI renders the hint card from
+                // the message's `promptHint` field rather than the text body.
+                val hintMsg = ChatMessageItem(
+                    id = UUID.randomUUID().toString(),
+                    role = ChatRole.ASSISTANT,
+                    content = event.msg.title,
+                    promptHint = event.msg
+                )
+                _messages.value = _messages.value + hintMsg
+                Log.i(TAG, "Prompt hint: ${event.msg.title}")
+            }
+
+            is ServerEvent.CandidatesReady -> {
+                _candidates.value = event.msg
+                _selectedCandidateId.value = null
+                // If there's an in-flight assistant text message with the same
+                // message_id, attach the candidates to it. Otherwise create a
+                // fresh assistant message holding the carousel.
+                val current = _messages.value.toMutableList()
+                val idx = current.indexOfFirst { it.id == event.msg.messageId }
+                if (idx >= 0) {
+                    current[idx] = current[idx].copy(candidateSet = event.msg)
+                } else {
+                    current += ChatMessageItem(
+                        id = event.msg.messageId,
+                        role = ChatRole.ASSISTANT,
+                        content = "",
+                        candidateSet = event.msg
+                    )
+                }
+                _messages.value = current
+                Log.i(TAG, "Candidates ready: ${event.msg.candidates.size} entries")
+            }
         }
     }
 
@@ -287,18 +411,29 @@ class ChatViewModel : ViewModel() {
     ) {
         val current = _messages.value.toMutableList()
         val idx = current.indexOfFirst { it.id == id }
-        val msg = ChatMessageItem(
-            id = id,
-            role = ChatRole.ASSISTANT,
-            content = content,
-            status = status,
-            attachments = attachments,
-            actions = actions
-        )
         if (idx >= 0) {
-            current[idx] = msg
+            // Preserve v2 fields (candidateSet, promptHint, selectedCandidateId)
+            // that may have been attached between chunks/done arriving —
+            // otherwise a later assistant_done would wipe an already-displayed
+            // candidate carousel.
+            current[idx] = current[idx].copy(
+                role = ChatRole.ASSISTANT,
+                content = content,
+                status = status,
+                attachments = attachments,
+                actions = actions
+            )
         } else {
-            current.add(msg)
+            current.add(
+                ChatMessageItem(
+                    id = id,
+                    role = ChatRole.ASSISTANT,
+                    content = content,
+                    status = status,
+                    attachments = attachments,
+                    actions = actions
+                )
+            )
         }
         _messages.value = current
     }

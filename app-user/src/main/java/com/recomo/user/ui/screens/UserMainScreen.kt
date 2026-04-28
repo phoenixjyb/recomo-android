@@ -1,8 +1,14 @@
 package com.recomo.user.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
@@ -19,21 +25,32 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.recomo.common.chat.PreviewTrajectoryState
 import com.recomo.common.chat.ChatViewModel
 import com.recomo.common.chat.TrajectoryAttachment
+import com.recomo.common.chat.TrajectoryCandidate
 import com.recomo.common.chat.TrajectoryDownloadResult
+import com.recomo.common.sceneviewer.AnchorPose as CommonAnchorPose
 import com.recomo.common.model.RobotProfile
+import com.recomo.common.model.VideoSource
+import com.recomo.common.preview.TrajectoryPreview
 import com.recomo.user.R
 import com.recomo.user.data.media.UserMediaItem
 import com.recomo.user.data.trajectory.LocalTrajectorySessionSummary
 import com.recomo.user.control.UserConnectionStatus
 import com.recomo.user.control.UserGatewayViewModel
+import com.recomo.user.control.UserLibrarySessionDetail
 import com.recomo.user.control.UserLibraryViewModel
 import com.recomo.user.control.UserMapLocalizationViewModel
 import com.recomo.user.control.UserNavigationViewModel
@@ -46,15 +63,18 @@ import com.recomo.user.control.UserPostRecordUiState
 import com.recomo.user.control.UserPostRecordViewModel
 import com.recomo.user.control.UserTrajectoryHandoffReadiness
 import com.recomo.user.control.UserRunCommandViewModel
+import com.recomo.user.control.UserLocalSessionPreviewState
 import com.recomo.user.control.UserRunVideoDetailState
 import com.recomo.user.control.UserRunVideoUiState
 import com.recomo.user.control.UserRunVideoViewModel
 import com.recomo.user.control.UserSystemViewModel
 import com.recomo.user.control.UserTouchControlViewModel
 import com.recomo.user.ui.screens.chat.ChatScreen
+import com.recomo.user.phoneteach.PhoneTeachNavHost
 import com.recomo.user.ui.screens.creator.MotionCreatorMode
 import com.recomo.user.ui.screens.creator.MotionCreatorModeItemUiState
 import com.recomo.user.ui.screens.creator.MotionCreatorScreen
+import com.recomo.user.ui.screens.smartfollow.SmartFollowRoute
 import com.recomo.user.ui.screens.creator.MotionCreatorShellUiState
 import com.recomo.user.ui.screens.control.ControlBasePoseUiState
 import com.recomo.user.ui.screens.control.ControlOverviewUiState
@@ -90,6 +110,10 @@ import com.recomo.user.ui.screens.main.MainControlTone
 import com.recomo.user.ui.screens.main.MainControlTransportControlKey
 import com.recomo.user.ui.screens.main.MainControlTransportControlUiState
 import com.recomo.user.ui.screens.main.MainControlUiState
+import com.recomo.user.ui.screens.common.EmergencyStopOverlay
+import com.recomo.user.ui.screens.common.SystemHealthBar
+import com.recomo.user.ui.screens.common.SystemHealthDetail
+import com.recomo.user.ui.screens.common.SystemHealthViewModel
 import com.recomo.user.ui.screens.common.VideoPreviewContent
 import com.recomo.user.ui.screens.connection.ConnectionScreen
 import com.recomo.user.ui.screens.main.NavigationPanel
@@ -133,9 +157,21 @@ import com.recomo.user.ui.screens.settings.SettingsUiState
 import com.recomo.user.ui.screens.touch.TouchControlScreen
 import com.recomo.user.ui.screens.touch.TouchControlSpeedMode
 import com.recomo.user.ui.screens.touch.TouchControlWorkspaceState
+import com.recomo.user.ui.screens.viewer.SceneTrajectorySource
+import com.recomo.user.ui.screens.viewer.SceneAssetSource
+import com.recomo.user.ui.screens.viewer.SceneViewerEntrySource
+import com.recomo.user.ui.screens.viewer.SceneViewerLaunchRequest
+import com.recomo.user.ui.screens.viewer.SceneViewerScreen
+import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlinx.coroutines.launch
 
 @Composable
 fun UserMainScreen() {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val shellViewModel: UserMainViewModel = hiltViewModel()
     val controlViewModel: UserGatewayViewModel = hiltViewModel()
     val libraryViewModel: UserLibraryViewModel = hiltViewModel()
@@ -147,16 +183,27 @@ fun UserMainScreen() {
     val mediaGalleryViewModel: UserMediaGalleryViewModel = hiltViewModel()
     val postRecordViewModel: UserPostRecordViewModel = hiltViewModel()
     val navigationViewModel: UserNavigationViewModel = hiltViewModel()
-    val chatViewModel: ChatViewModel = viewModel()
+    val chatViewModel: ChatViewModel = hiltViewModel()
+    val systemHealthViewModel: SystemHealthViewModel = hiltViewModel()
+    val musicPlayerViewModel: com.recomo.user.control.StudioDanceMusicPlayerViewModel = hiltViewModel()
+    var hasCameraPermission by remember(context) {
+        mutableStateOf(context.hasCameraPermission())
+    }
     val stage by shellViewModel.stage.collectAsState()
     val connectionStatus by shellViewModel.connectionStatus.collectAsState()
     val selectedRobot by shellViewModel.selectedRobot.collectAsState()
     val availableRobots by shellViewModel.availableRobots.collectAsState()
     val chatServerUrl by shellViewModel.chatServerUrl.collectAsState()
     val sessionFolderPath by shellViewModel.sessionFolderPath.collectAsState()
+    val sceneViewerFolderPath by shellViewModel.sceneViewerFolderPath.collectAsState()
+    val useWebRTC by shellViewModel.useWebRTC.collectAsState()
+    val videoSource by shellViewModel.videoSource.collectAsState()
+    val hdmiDeviceAvailable by runVideoViewModel.videoSourceManager.hdmiDeviceAvailable.collectAsState()
+    val speedOverrides by shellViewModel.speedTierOverrides.collectAsState()
     val route by shellViewModel.route.collectAsState()
     val settingsOpen by shellViewModel.settingsOpen.collectAsState()
     val statusMessage by shellViewModel.statusMessage.collectAsState()
+    val sceneViewerRequest by shellViewModel.sceneViewerRequest.collectAsState()
     val previewTrajectory by chatViewModel.previewTrajectory.collectAsState()
     val controlConnectionStatus by controlViewModel.connectionStatus.collectAsState()
     val stateHz by controlViewModel.stateHz.collectAsState()
@@ -166,6 +213,7 @@ fun UserMainScreen() {
     val hasMapPose by controlViewModel.hasMapPose.collectAsState()
     val trackingSummary by controlViewModel.trackingSummary.collectAsState()
     val libraryState by libraryViewModel.state.collectAsState()
+    val librarySessionDetail by libraryViewModel.sessionDetail.collectAsState()
     val mapState by mapViewModel.state.collectAsState()
     val runCommandState by runViewModel.state.collectAsState()
     val currentSceneType by runViewModel.sceneType.collectAsState()
@@ -175,6 +223,7 @@ fun UserMainScreen() {
     val localSessionPreview by runViewModel.localSessionPreview.collectAsState()
     val runVideoState by runVideoViewModel.uiState.collectAsState()
     val runVideoBitmap by runVideoViewModel.latestBitmap.collectAsState()
+    val musicState by musicPlayerViewModel.state.collectAsState()
     val systemInfoState by systemViewModel.infoCardState.collectAsState()
     val systemLoadState by systemViewModel.systemLoadState.collectAsState()
     val gatewayControlState by systemViewModel.gatewayControlState.collectAsState()
@@ -189,6 +238,12 @@ fun UserMainScreen() {
     val mediaGalleryState by mediaGalleryViewModel.uiState.collectAsState()
     val postRecordState by postRecordViewModel.uiState.collectAsState()
     val navState by navigationViewModel.navState.collectAsState()
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasCameraPermission = granted
+        runVideoViewModel.onCameraPermissionResult(granted)
+    }
     val connectionLabelConnected = stringResource(R.string.connection_status_connected)
     val connectionLabelConnecting = stringResource(R.string.connection_status_connecting)
     val connectionLabelDisconnected = stringResource(R.string.connection_status_disconnected)
@@ -227,6 +282,7 @@ fun UserMainScreen() {
     val statusVideoOfflineLabel = stringResource(R.string.status_video_offline)
     val statusVideoErrorLabel = stringResource(R.string.status_video_error)
     val localPreviewTitleLabel = stringResource(R.string.run_preview_local_session)
+    val scenePreviewLabel = stringResource(R.string.scene_viewer_open)
     val touchTitle = stringResource(R.string.touch_title)
     val touchSlowLabel = stringResource(R.string.touch_slow)
     val touchNormalLabel = stringResource(R.string.touch_normal)
@@ -271,6 +327,8 @@ fun UserMainScreen() {
     var mapMatchOpen by rememberSaveable { mutableStateOf(false) }
     var motionDetailItem by remember { mutableStateOf<com.recomo.user.ui.screens.library.MotionDetailItem?>(null) }
     var localizationSkipped by rememberSaveable { mutableStateOf(false) }
+    var showCountdown by remember { mutableStateOf(false) }
+    val countdownDuration by shellViewModel.countdownDurationSeconds.collectAsState(initial = 3)
 
     val copyStyleDir = remember { mediaGalleryViewModel.copyStyleDirectory }
 
@@ -423,6 +481,16 @@ fun UserMainScreen() {
             !selectedTrajectory.isNullOrBlank() -> selectedTrajectory
             else -> null
         }
+        // Display override: when the handoff supplied a user-facing
+        // sourceName (AI chat candidates show their "aigen-..." name),
+        // prefer that in UI labels even though FixedPositionCmd on the
+        // wire still uses selectedSessionId. Match-checks remain on the
+        // underlying id so loadedMatchesSelection stays correct.
+        val selectedSessionDisplay = when {
+            handoff?.readiness == UserTrajectoryHandoffReadiness.Ready &&
+                handoff.sourceName.isNotBlank() -> handoff.sourceName
+            else -> selectedSessionId
+        }
         val loadedSessionId = runCommandState.loadedSessionId
         val loadedSessionName = runCommandState.loadedSessionName
         val isLoaded = !runCommandState.loadedSessionId.isNullOrBlank() ||
@@ -471,7 +539,7 @@ fun UserMainScreen() {
         val canStop = runCommandState.isRunning || runCommandState.isPaused || isLoaded ||
             runCommandState.isIniting || runCommandState.isHoming
         RunWorkspaceUiState(
-            trajectoryText = selectedTrajectory.orEmpty(),
+            trajectoryText = selectedSessionDisplay.orEmpty(),
             statusLabel = runCommandState.statusLabel.ifBlank {
                 when {
                     runCommandState.isPaused -> runPausedLabel
@@ -499,8 +567,13 @@ fun UserMainScreen() {
             progress = runCommandState.progress,
             elapsedLabel = null,
             remainingLabel = null,
-            selectedTrajectoryLabel = selectedSessionId,
-            loadedTrajectory = loadedSessionName ?: loadedSessionId ?: runCommandState.selectedTrajectory,
+            selectedTrajectoryLabel = selectedSessionDisplay,
+            // When a display override is active, show it for the loaded
+            // label too so "running …" in the runner page reads the
+            // AI candidate name, not the masked wire id.
+            loadedTrajectory = if (selectedSessionDisplay != selectedSessionId && loadedMatchesSelection)
+                selectedSessionDisplay
+            else loadedSessionName ?: loadedSessionId ?: runCommandState.selectedTrajectory,
             loadedTrajectoryMatchesSelection = loadedMatchesSelection,
             loadedTrajectoryDetail = when {
                 isLoaded && loadedMatchesSelection -> runLoadedSelectedLabel
@@ -595,7 +668,7 @@ fun UserMainScreen() {
         )
     }
 
-    val libraryUiState = remember(libraryState, selectedTrajectory) {
+    val libraryUiState = remember(libraryState, selectedTrajectory, localSessions) {
         // Real SimpleTrack trajectories from gateway (scanned from Orin disk)
         val simpleTrackEntries = libraryState.simpleTrackTrajectories.map { trajName ->
             LibrarySessionSummaryUiItem(
@@ -610,8 +683,27 @@ fun UserMainScreen() {
                 linkedMap = ""
             )
         }
+        // Studio Dance sessions from bundled assets + filesystem
+        val studioDanceEntries = localSessions
+            .filter { it.sessionType?.equals("studio_dance", ignoreCase = true) == true }
+            .map { session ->
+                LibrarySessionSummaryUiItem(
+                    type = LibrarySessionType.FOI,
+                    sessionId = session.sessionId,
+                    sessionName = session.sessionName,
+                    robotName = session.robotName,
+                    category = session.category.ifBlank { "Studio Dance" },
+                    frameId = session.frameId,
+                    count = session.count,
+                    isSelected = selectedTrajectory == session.sessionId,
+                    sceneType = "StudioDance",
+                    sessionType = session.sessionType,
+                    bpm = session.bpm,
+                    musicFile = session.musicFile
+                )
+            }
         LibrarySummaryUiState(
-            foiSessions = simpleTrackEntries,
+            foiSessions = simpleTrackEntries + studioDanceEntries,
             poiSessions = libraryState.poiSessions.map { session ->
                 LibrarySessionSummaryUiItem(
                     type = LibrarySessionType.POI,
@@ -623,7 +715,8 @@ fun UserMainScreen() {
                     count = session.count,
                     isSelected = selectedTrajectory == session.sessionId,
                     sceneType = session.sceneType.name,
-                    linkedMap = session.linkedMap
+                    linkedMap = session.linkedMap,
+                    libraryTarget = session.target
                 )
             },
             statusLabel = libraryState.latestMessage ?: libraryTitle,
@@ -723,6 +816,12 @@ fun UserMainScreen() {
                         title = stringResource(R.string.route_motion_creator),
                         detail = mainCreateDetailLabel,
                         tone = MainControlTone.Brand
+                    ),
+                    MainControlShortcutUiState(
+                        key = MainControlShortcutKey.SmartFollow,
+                        title = stringResource(R.string.route_smart_follow),
+                        detail = stringResource(R.string.smart_follow_detail),
+                        tone = MainControlTone.Secondary
                     )
                 ),
                 transportControls = listOf(
@@ -777,20 +876,58 @@ fun UserMainScreen() {
         )
     }
 
-    val settingsUiState = remember(selectedRobot, chatServerUrl, sessionFolderPath, connectionStatus) {
+    val chatDirectEnabled by shellViewModel.chatDirectEnabled.collectAsState()
+    val chatDirectBaseUrl by shellViewModel.chatDirectBaseUrl.collectAsState()
+    val chatDirectAuthToken by shellViewModel.chatDirectAuthToken.collectAsState()
+    val voiceEngine by shellViewModel.voiceEngine.collectAsState()
+    val voiceModel by shellViewModel.voiceModel.collectAsState()
+
+    val whisperDownloadState by shellViewModel.whisperModelRepository.downloadState.collectAsState()
+
+    val settingsUiState = remember(
+        selectedRobot,
+        chatServerUrl,
+        chatDirectEnabled,
+        chatDirectBaseUrl,
+        chatDirectAuthToken,
+        voiceEngine,
+        voiceModel,
+        whisperDownloadState,
+        sessionFolderPath,
+        sceneViewerFolderPath,
+        connectionStatus,
+        useWebRTC,
+        videoSource,
+        hdmiDeviceAvailable,
+        speedOverrides
+    ) {
         SettingsUiState(
             robotLabel = selectedRobot.label,
             robotProfileLabel = selectedRobot.profile.name,
             networkPresetLabel = selectedRobot.preset.name,
             chatServerUrl = chatServerUrl,
+            chatDirectEnabled = chatDirectEnabled,
+            chatDirectBaseUrl = chatDirectBaseUrl,
+            chatDirectAuthToken = chatDirectAuthToken,
+            voiceEngine = voiceEngine,
+            voiceModel = voiceModel,
+            whisperDownloadState = whisperDownloadState,
             sessionFolderPath = sessionFolderPath,
+            sceneViewerFolderPath = sceneViewerFolderPath,
             gatewayStatusLabel = when (connectionStatus) {
                 UserConnectionStatus.Connected -> connectionLabelConnected
                 UserConnectionStatus.Connecting -> connectionLabelConnecting
                 UserConnectionStatus.Disconnected -> connectionLabelDisconnected
             },
             isConnected = connectionStatus == UserConnectionStatus.Connected,
-            isConnecting = connectionStatus == UserConnectionStatus.Connecting
+            isConnecting = connectionStatus == UserConnectionStatus.Connecting,
+            useWebRTC = useWebRTC,
+            videoSource = videoSource,
+            hdmiDeviceAvailable = hdmiDeviceAvailable,
+            speedSlowMps = speedOverrides.slowMps,
+            speedNormalMps = speedOverrides.normalMps,
+            speedFastMps = speedOverrides.fastMps,
+            countdownDurationSeconds = countdownDuration
         )
     }
 
@@ -946,7 +1083,11 @@ fun UserMainScreen() {
                 MotionRunnerMetricUiState("Session", runWorkspaceState.loadedTrajectory ?: "--", MotionRunnerTone.Primary, MotionRunnerMetricIcon.Speed),
                 MotionRunnerMetricUiState("Pose", if (mapUiState.robotPoseOk) mapLocalizedLabel else mapNotReadyLabel, toneForRunnerStatus(mapUiState.robotPoseOk), MotionRunnerMetricIcon.Shield),
                 MotionRunnerMetricUiState("Video", if (runVideoState.isStreaming) stringResource(R.string.video_live) else stringResource(R.string.video_idle), if (runVideoState.isStreaming) MotionRunnerTone.Success else MotionRunnerTone.Warning, MotionRunnerMetricIcon.Signal)
-            )
+            ),
+            isStudioDance = runCommandState.isStudioDance,
+            musicProgress = musicState.progress,
+            musicTimeLabel = musicState.timeLabel,
+            musicFileName = musicState.musicFileName ?: runCommandState.musicFileName
         )
     }
 
@@ -987,6 +1128,110 @@ fun UserMainScreen() {
         }
     }
 
+    // v2: AI chat candidates. Preview downloads the trajectory JSON, builds a
+    // SceneViewerLaunchRequest with RemoteUrl(scene.spz_url) + InlineJson(traj)
+    // + anchorOverride(scene.anchor_pose), and pushes it to the shell's scene
+    // viewer state. Execute turns the candidate into the same handoff shape
+    // the v1 single-trajectory path already uses, then navigates to Runner.
+    val previewChatCandidate = remember(chatViewModel, shellViewModel) {
+        { candidate: TrajectoryCandidate ->
+            val previewUrl = candidate.previewUrl ?: candidate.downloadUrl
+            if (previewUrl.endsWith(".tum", ignoreCase = true)) {
+                // Cloud bridge serves the raw TUM: hand it to the viewer's own
+                // parseTUMContent via InlineTum. Skips the session-JSON flatten
+                // which collapses 3D height + full orientation.
+                chatViewModel.downloadText(previewUrl) { tum ->
+                    if (!tum.isNullOrBlank()) {
+                        shellViewModel.openSceneViewer(
+                            chatCandidateToSceneViewerRequestTum(candidate, tum)
+                        )
+                    }
+                }
+            } else {
+                // Legacy JSON payload (keypoint-teach sessions, older cloud
+                // shims). Keep the existing planar-JSON path for compat.
+                val adapter = candidate.toLegacyAttachment()
+                chatViewModel.downloadTrajectory(adapter) { result ->
+                    when (result) {
+                        is TrajectoryDownloadResult.Success -> {
+                            val request = chatCandidateToSceneViewerRequest(
+                                candidate = candidate,
+                                trajectoryJson = result.rawJson.toString()
+                            )
+                            shellViewModel.openSceneViewer(request)
+                        }
+                        is TrajectoryDownloadResult.Error -> {
+                            // chat already appended a SYSTEM message.
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val executeChatCandidate: (TrajectoryCandidate) -> Unit = remember(runViewModel, shellViewModel, chatViewModel, context, scope) {
+        { candidate: TrajectoryCandidate ->
+            val exec = candidate.executionRef
+            if (exec != null && candidate.simResult?.feasible != false) {
+                // Cloud-authored path: drop JSON on Orin via deploy service, then
+                // run it through the same fixed_position pipeline CopyStyle uses.
+                scope.launch {
+                    when (val r = runViewModel.executeCloudAuthoredTrajectory(exec, displayName = candidate.name)) {
+                        is com.recomo.user.control.UserRunCommandViewModel.ExecuteCandidateResult.Ready -> {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.chat_execute_deployed),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                            shellViewModel.navigateTo(UserMainRoute.MotionRunner)
+                        }
+                        is com.recomo.user.control.UserRunCommandViewModel.ExecuteCandidateResult.DownloadFailed -> {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.chat_execute_download_failed, r.reason),
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        is com.recomo.user.control.UserRunCommandViewModel.ExecuteCandidateResult.DeployFailed -> {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.chat_execute_deploy_failed, r.reason),
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+            } else {
+                // Legacy preview-only path: stash trajectory locally so MotionRunner
+                // handoff becomes Ready. Base-only execute if sim_result allows.
+                val adapter = candidate.toLegacyAttachment()
+                runViewModel.beginChatTrajectoryHandoff(adapter)
+                shellViewModel.navigateTo(UserMainRoute.MotionRunner)
+                chatViewModel.downloadTrajectory(adapter) { result ->
+                    when (result) {
+                        is TrajectoryDownloadResult.Success -> {
+                            runViewModel.persistChatTrajectoryAsLocalSession(
+                                rawJson = result.rawJson,
+                                sessionId = result.sessionId
+                            )
+                            runViewModel.completeChatTrajectoryHandoff(
+                                attachment = adapter,
+                                resolvedSessionId = result.sessionId,
+                                resolvedSessionName = result.sessionName
+                            )
+                        }
+                        is TrajectoryDownloadResult.Error -> {
+                            runViewModel.failChatTrajectoryHandoff(
+                                attachment = adapter,
+                                reason = result.message
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     LaunchedEffect(route) {
         if (route == UserMainRoute.MotionLibrary) {
             libraryViewModel.refresh()
@@ -1000,8 +1245,33 @@ fun UserMainScreen() {
         UserMainRoute.MotionRunner,
         UserMainRoute.TouchControl,
         UserMainRoute.MotionLibrary,
-        UserMainRoute.MotionCreator
+        UserMainRoute.MotionCreator,
+        UserMainRoute.SmartFollow
     )
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasCameraPermission = context.hasCameraPermission()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(videoSource, hdmiDeviceAvailable, hasCameraPermission) {
+        if (videoSource != VideoSource.HDMI_USB || !hdmiDeviceAvailable) {
+            return@LaunchedEffect
+        }
+
+        if (hasCameraPermission) {
+            runVideoViewModel.onCameraPermissionResult(true)
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     LaunchedEffect(stage, settingsOpen, route) {
         runVideoViewModel.setActive(
@@ -1050,7 +1320,18 @@ fun UserMainScreen() {
                             detailHighlights = emptyList(),
                             onOpenMainControl = { shellViewModel.navigateTo(UserMainRoute.MainControl) },
                             onOpenRunner = { shellViewModel.navigateTo(UserMainRoute.MotionRunner) },
-                            onOpenSettings = shellViewModel::openSettings
+                            onOpenSettings = shellViewModel::openSettings,
+                            onOpenSceneViewer = {
+                                // Standalone launch — opens the pre-launch panel with
+                                // auto-selected best-match from the SceneAssetRepository.
+                                shellViewModel.openSceneViewer(
+                                    SceneViewerLaunchRequest(
+                                        title = "Scene Viewer",
+                                        subtitle = "Pick a scene from the list",
+                                        entrySource = SceneViewerEntrySource.Standalone
+                                    )
+                                )
+                            }
                         )
                     }
 
@@ -1071,6 +1352,7 @@ fun UserMainScreen() {
                                 onOpenRunner = { shellViewModel.navigateTo(UserMainRoute.MotionRunner) },
                                 onOpenLibrary = { shellViewModel.navigateTo(UserMainRoute.MotionLibrary) },
                                 onOpenCreator = { shellViewModel.navigateTo(UserMainRoute.MotionCreator) },
+                                onOpenSmartFollow = { shellViewModel.navigateTo(UserMainRoute.SmartFollow) },
                                 onOpenTouchControl = { shellViewModel.navigateTo(UserMainRoute.TouchControl) },
                                 onOpenSlamMaps = { shellViewModel.navigateTo(UserMainRoute.SlamMaps) },
                                 onOpenMediaGallery = { shellViewModel.navigateTo(UserMainRoute.MediaGallery) },
@@ -1094,29 +1376,48 @@ fun UserMainScreen() {
                             UserMainRoute.MotionCreator -> MotionCreatorRoute(
                                 chatViewModel = chatViewModel,
                                 chatServerUrl = chatServerUrl,
+                                showBitmapFrame = runVideoState.showBitmapFrame,
+                                videoBitmap = runVideoBitmap,
+                                onVideoSurfaceReady = runVideoViewModel::initializeSurface,
+                                onVideoSurfaceDestroyed = runVideoViewModel::releaseSurface,
+                                captureThumbnail = { runVideoViewModel.captureThumbnailBase64() },
+                                captureRobotState = { runViewModel.buildRobotStateSnapshot() },
                                 onBack = { shellViewModel.navigateTo(UserMainRoute.MainControl) },
                                 onPreviewTrajectory = { chatViewModel.previewTrajectory(it) },
                                 onExecuteTrajectory = resolveChatTrajectoryToRun,
+                                onPreviewCandidate = previewChatCandidate,
+                                onExecuteCandidate = executeChatCandidate,
                                 onCopyStylePresetSelected = { detail ->
+                                    val matchedSession = libraryState.poiSessions.firstOrNull { session ->
+                                        session.sessionId.equals(detail.id, ignoreCase = true) ||
+                                            session.sessionName.equals(detail.id, ignoreCase = true)
+                                    }
                                     // Presets hard-code linkedMap = "". Resolve it from the
                                     // real library session so the runner's left-rail "定位"
                                     // label and the MapMatch dialog pick up the correct map
                                     // (e.g. t8space-3f) instead of whatever the gateway last
                                     // reported as current_location (e.g. panyan1).
                                     val resolvedMap = if (detail.linkedMap.isBlank()) {
-                                        libraryState.poiSessions.firstOrNull { session ->
-                                            session.sessionId.equals(detail.id, ignoreCase = true) ||
-                                                session.sessionName.equals(detail.id, ignoreCase = true)
-                                        }?.linkedMap.orEmpty()
+                                        matchedSession?.linkedMap.orEmpty()
                                     } else {
                                         detail.linkedMap
                                     }
-                                    motionDetailItem = if (resolvedMap != detail.linkedMap) {
-                                        detail.copy(linkedMap = resolvedMap)
-                                    } else {
-                                        detail
+                                    matchedSession?.target?.let { target ->
+                                        libraryViewModel.requestSessionDetail(target, matchedSession.sessionId)
                                     }
-                                }
+                                    motionDetailItem = if (resolvedMap != detail.linkedMap) {
+                                        detail.copy(
+                                            linkedMap = resolvedMap,
+                                            libraryTarget = matchedSession?.target
+                                        )
+                                    } else {
+                                        detail.copy(libraryTarget = matchedSession?.target)
+                                    }
+                                },
+                                onOpenSceneViewer = { shellViewModel.openSceneViewer(it) },
+                                voiceEngine = voiceEngine,
+                                whisperRepository = shellViewModel.whisperModelRepository,
+                                voiceModelId = shellViewModel.voiceModel.value.modelId
                             )
                             UserMainRoute.MotionRunner -> MotionRunnerRoute(
                                 uiState = motionRunnerUiState,
@@ -1128,18 +1429,24 @@ fun UserMainScreen() {
                                 onRun = {
                                     if (runCommandState.isPaused) {
                                         runViewModel.resume()
+                                        if (runCommandState.isStudioDance) musicPlayerViewModel.resume()
+                                    } else if (runCommandState.isStudioDance) {
+                                        // Studio Dance: show countdown, then sync-start
+                                        showCountdown = true
                                     } else {
                                         runViewModel.run()
-                                        // Auto-start tablet-side video recording
                                         if (!runVideoViewModel.isRecording.value) {
                                             runVideoViewModel.startRecording()
                                         }
                                     }
                                 },
-                                onPause = runViewModel::pause,
+                                onPause = {
+                                    runViewModel.pause()
+                                    if (runCommandState.isStudioDance) musicPlayerViewModel.pause()
+                                },
                                 onStop = {
                                     runViewModel.stop()
-                                    // Auto-stop tablet-side video recording
+                                    if (runCommandState.isStudioDance) musicPlayerViewModel.stop()
                                     if (runVideoViewModel.isRecording.value) {
                                         runVideoViewModel.stopRecording()
                                     }
@@ -1157,6 +1464,9 @@ fun UserMainScreen() {
                                 onCreateMotion = { shellViewModel.navigateTo(UserMainRoute.MotionCreator) },
                                 onRefresh = libraryViewModel::refresh,
                                 onSelectSession = { session ->
+                                    session.libraryTarget?.let { target ->
+                                        libraryViewModel.requestSessionDetail(target, session.sessionId)
+                                    }
                                     motionDetailItem = session.toMotionDetailItem()
                                 }
                             )
@@ -1272,6 +1582,13 @@ fun UserMainScreen() {
                                 onDismissLocalization = mapViewModel::dismissLocalization,
                                 onOpenMapMatch = { mapMatchOpen = true }
                             )
+                            UserMainRoute.SmartFollow -> SmartFollowRoute(
+                                onBack = { shellViewModel.navigateTo(UserMainRoute.MainControl) },
+                                showBitmapFrame = runVideoState.showBitmapFrame,
+                                videoBitmap = runVideoBitmap,
+                                onVideoSurfaceReady = runVideoViewModel::initializeSurface,
+                                onVideoSurfaceDestroyed = runVideoViewModel::releaseSurface
+                            )
                         }
 
                         if (settingsOpen) {
@@ -1309,8 +1626,19 @@ fun UserMainScreen() {
                                 onDismissSensors = systemViewModel::dismissSensors,
                                 onPrepareScene = { systemViewModel.prepareScene() },
                                 onDismissScene = systemViewModel::dismissScene,
+                                onUseWebRTCChange = shellViewModel::updateUseWebRTC,
+                                onVideoSourceChange = shellViewModel::updateVideoSource,
                                 onChatServerUrlChange = shellViewModel::updateChatServerUrl,
-                                onSessionFolderPathChange = shellViewModel::updateSessionFolderPath
+                                onChatDirectEnabledChange = shellViewModel::updateChatDirectEnabled,
+                                onChatDirectBaseUrlChange = shellViewModel::updateChatDirectBaseUrl,
+                                onChatDirectAuthTokenChange = shellViewModel::updateChatDirectAuthToken,
+                                onVoiceEngineChange = shellViewModel::updateVoiceEngine,
+                                onVoiceModelChange = shellViewModel::updateVoiceModel,
+                                onDownloadWhisperModel = shellViewModel::downloadWhisperModel,
+                                onSessionFolderPathChange = shellViewModel::updateSessionFolderPath,
+                                onSceneViewerFolderPathChange = shellViewModel::updateSceneViewerFolderPath,
+                                onSpeedTierChange = shellViewModel::updateSpeedTiers,
+                                onCountdownDurationChange = shellViewModel::updateCountdownDuration
                             )
                         }
                     }
@@ -1319,19 +1647,54 @@ fun UserMainScreen() {
         }
 
         when {
+            sceneViewerRequest != null -> {
+                val sceneViewerContext = LocalContext.current
+                val sceneViewerRootDir = remember(sceneViewerContext) {
+                    java.io.File(sceneViewerContext.getExternalFilesDir(null), "sceneviewer")
+                }
+                SceneViewerScreen(
+                    request = sceneViewerRequest!!,
+                    repository = shellViewModel.sceneAssetRepository,
+                    httpServer = shellViewModel.sceneViewerHttpServer,
+                    tumCacheDir = java.io.File(sceneViewerRootDir, "cache"),
+                    onEnsureReady = {
+                        val sceneDir = java.io.File(sceneViewerRootDir, "scenes")
+                        sceneDir.mkdirs()
+                        java.io.File(sceneViewerRootDir, "cache").mkdirs()
+                        shellViewModel.ensureSceneAssetsReady(sceneDir)
+                    },
+                    onClose = shellViewModel::closeSceneViewer
+                )
+            }
             localSessionPreview != null -> {
                 val preview = localSessionPreview!!
                 val previewSession = localSessions.firstOrNull { it.sessionId == preview.sessionId }
+                val isStudioDancePreview = previewSession?.sessionType?.equals("studio_dance", ignoreCase = true) == true
                 TrajectoryPreviewScreen(
                     preview = preview.preview,
                     title = preview.sessionName.ifBlank { localPreviewTitleLabel },
                     frameSummary = "${stringResource(R.string.chat_preview_frames_label)}: ${preview.frameCount}",
                     executeLabel = stringResource(R.string.run_use_local_session),
-                    onClose = { runViewModel.closeLocalSessionPreview() },
+                    scenePreviewLabel = scenePreviewLabel,
+                    onClose = {
+                        runViewModel.closeLocalSessionPreview()
+                        if (isStudioDancePreview) musicPlayerViewModel.stop()
+                    },
+                    onOpenSceneViewer = {
+                        shellViewModel.openSceneViewer(
+                            localSessionPreviewToSceneViewerRequest(preview)
+                        )
+                    },
                     onExecute = {
                         previewSession?.let(runViewModel::attachLocalSession)
                         runViewModel.closeLocalSessionPreview()
-                    }
+                        if (isStudioDancePreview) musicPlayerViewModel.stop()
+                    },
+                    onPlaybackChanged = if (isStudioDancePreview) {
+                        { playing ->
+                            if (playing) musicPlayerViewModel.play() else musicPlayerViewModel.pause()
+                        }
+                    } else null
                 )
             }
             motionDetailItem != null -> {
@@ -1361,6 +1724,7 @@ fun UserMainScreen() {
                             val sceneType = when (detail.sceneType) {
                                 "SimpleTrack" -> com.recomo.user.control.SceneType.SimpleTrack
                                 "LivePnC" -> com.recomo.user.control.SceneType.LivePnC
+                                "Studio Dance", "StudioDance" -> com.recomo.user.control.SceneType.StudioDance
                                 else -> com.recomo.user.control.SceneType.Unknown
                             }
                             runViewModel.selectTrajectoryWithSceneType(detail.id, sceneType)
@@ -1376,6 +1740,7 @@ fun UserMainScreen() {
                             val sceneType = when (detail.sceneType) {
                                 "SimpleTrack" -> com.recomo.user.control.SceneType.SimpleTrack
                                 "LivePnC" -> com.recomo.user.control.SceneType.LivePnC
+                                "Studio Dance", "StudioDance" -> com.recomo.user.control.SceneType.StudioDance
                                 else -> com.recomo.user.control.SceneType.Unknown
                             }
                             runViewModel.selectTrajectoryWithSceneType(detail.id, sceneType)
@@ -1393,8 +1758,37 @@ fun UserMainScreen() {
                         item = detail,
                         videoFile = detail.videoFileName?.let { java.io.File(copyStyleDir, it) },
                         onBack = { motionDetailItem = null },
+                        onOpenSceneViewer = {
+                            shellViewModel.openSceneViewer(
+                                motionDetailToSceneViewerRequest(
+                                    detail = detail,
+                                    sessionDetail = librarySessionDetail
+                                )
+                            )
+                        },
+                        onPreview = if (detail.isStudioDance) {
+                            {
+                                // Build 3D preview, prepare music (don't auto-play)
+                                val session = localSessions.firstOrNull { it.sessionId == detail.id }
+                                if (session != null) {
+                                    runViewModel.previewLocalSession(session)
+                                }
+                                detail.musicFile?.let { musicPlayerViewModel.prepareByName(it) }
+                            }
+                        } else null,
                         onRunThis = {
-                            if (detail.sceneType == "SimpleTrack") {
+                            if (detail.isStudioDance) {
+                                // Studio Dance — prepare music + go to runner
+                                runViewModel.selectStudioDanceTrajectory(
+                                    trajectoryId = detail.id,
+                                    musicFile = detail.musicFile,
+                                    musicOffsetMs = detail.musicOffsetMs ?: 0L
+                                )
+                                detail.musicFile?.let { musicPlayerViewModel.prepareByName(it) }
+                                localizationSkipped = true
+                                motionDetailItem = null
+                                shellViewModel.navigateTo(UserMainRoute.MotionRunner)
+                            } else if (detail.sceneType == "SimpleTrack") {
                                 // SimpleTrack doesn't need a map — go straight to runner
                                 runViewModel.selectTrajectoryWithSceneType(
                                     detail.id,
@@ -1435,7 +1829,13 @@ fun UserMainScreen() {
                     title = preview.attachment.name.ifBlank { stringResource(R.string.chat_preview_title) },
                     frameSummary = "${stringResource(R.string.chat_preview_frames_label)}: ${preview.preview.samples.size}",
                     executeLabel = stringResource(R.string.chat_open_in_run),
+                    scenePreviewLabel = scenePreviewLabel,
                     onClose = { chatViewModel.closePreview() },
+                    onOpenSceneViewer = {
+                        shellViewModel.openSceneViewer(
+                            chatPreviewToSceneViewerRequest(preview)
+                        )
+                    },
                     onExecute = {
                         handoffPreviewTrajectoryToRun(
                             preview.attachment,
@@ -1446,6 +1846,291 @@ fun UserMainScreen() {
                 )
             }
         }
+
+        // Studio Dance countdown overlay — rendered above all content
+        if (showCountdown) {
+            com.recomo.user.ui.screens.runner.CountdownOverlay(
+                durationSeconds = countdownDuration,
+                onComplete = {
+                    showCountdown = false
+                    // Synchronized start: motion + music together
+                    runViewModel.run()
+                    musicPlayerViewModel.play(offsetMs = runCommandState.musicOffsetMs)
+                    if (!runVideoViewModel.isRecording.value) {
+                        runVideoViewModel.startRecording()
+                    }
+                },
+                onCancel = {
+                    showCountdown = false
+                }
+            )
+        }
+
+        // System health bar — compact pill at top center, tap to expand detail
+        if (stage == UserShellStage.Main && !settingsOpen) {
+            var healthDetailOpen by rememberSaveable { mutableStateOf(false) }
+
+            SystemHealthBar(
+                viewModel = systemHealthViewModel,
+                onTap = { healthDetailOpen = !healthDetailOpen },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 4.dp)
+            )
+
+            if (healthDetailOpen) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 40.dp)
+                        .fillMaxWidth(0.45f)
+                        .heightIn(max = 500.dp),
+                    color = Color(0xEE111111),
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 8.dp
+                ) {
+                    SystemHealthDetail(viewModel = systemHealthViewModel)
+                }
+            }
+        }
+
+        // Global emergency-stop floating button — visible on all pages in the
+        // main stage except when Settings overlay is open. Pages that already
+        // have their own inline e-stop (RUN, TouchControl, MotionRunner) will
+        // show both — the global one is small and unobtrusive in the corner,
+        // so the redundancy is acceptable for safety.
+        if (stage == UserShellStage.Main && !settingsOpen) {
+            EmergencyStopOverlay(
+                estopActive = runCommandState.estopActive,
+                onToggle = {
+                    if (runCommandState.estopActive) runViewModel.clearEstop()
+                    else runViewModel.estop()
+                },
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
+        }
+    }
+}
+
+private fun motionDetailToSceneViewerRequest(
+    detail: MotionDetailItem,
+    sessionDetail: UserLibrarySessionDetail?
+): SceneViewerLaunchRequest = SceneViewerLaunchRequest(
+    title = detail.title,
+    subtitle = detail.subtitle.ifBlank { "Trajectory-linked scene preview" },
+    entrySource = if (detail.isPreset) {
+        SceneViewerEntrySource.CopyStyle
+    } else {
+        SceneViewerEntrySource.MotionLibrary
+    },
+    trajectorySource = resolveTrajectorySource(detail, sessionDetail),
+    sceneSource = motionDetailSceneSource(detail, sessionDetail),
+    sessionId = detail.id,
+    anchorTumAssetPath = detail.previewAnchorTumAssetPath
+)
+
+/**
+ * Priority for the SceneViewer trajectory source:
+ *   1. Pre-computed bundled TUM (CopyStyle presets — see `assets/spzviewer/trajectories/`)
+ *   2. Matching library session's raw JSON — converted to TUM at launch time
+ *   3. Opaque TrajectoryReference — the launcher can't render this, falls through to no-trajectory mode
+ */
+private fun resolveTrajectorySource(
+    detail: MotionDetailItem,
+    sessionDetail: UserLibrarySessionDetail?
+): SceneTrajectorySource {
+    detail.previewTumAssetPath?.takeIf { it.isNotBlank() }?.let {
+        return SceneTrajectorySource.AppAssetTum(it)
+    }
+    matchingLibrarySessionDetail(detail, sessionDetail)?.let { matchedDetail ->
+        return SceneTrajectorySource.InlineJson(matchedDetail.rawSession.toString())
+    }
+    return SceneTrajectorySource.TrajectoryReference(detail.id)
+}
+
+private fun matchingLibrarySessionDetail(
+    detail: MotionDetailItem,
+    sessionDetail: UserLibrarySessionDetail?
+): UserLibrarySessionDetail? {
+    if (detail.libraryTarget == null || sessionDetail == null) return null
+    if (sessionDetail.target != detail.libraryTarget) return null
+    return sessionDetail.takeIf { it.sessionId.equals(detail.id, ignoreCase = true) }
+}
+
+private fun motionDetailSceneSource(
+    detail: MotionDetailItem,
+    sessionDetail: UserLibrarySessionDetail?
+): SceneAssetSource? {
+    val matchedDetail = matchingLibrarySessionDetail(detail, sessionDetail)
+    return listOf(
+        detail.linkedMap,
+        matchedDetail?.linkedMap.orEmpty(),
+        matchedDetail?.mapName.orEmpty()
+    ).firstNotNullOfOrNull { candidate ->
+        candidate.toSceneAssetSourceOrNull()
+    }
+}
+
+private fun chatPreviewToSceneViewerRequest(
+    preview: PreviewTrajectoryState
+): SceneViewerLaunchRequest = SceneViewerLaunchRequest(
+    title = preview.attachment.name.ifBlank { "AI trajectory scene preview" },
+    subtitle = preview.attachment.frameCount?.let { "AI trajectory · $it frames" } ?: "AI trajectory preview",
+    entrySource = SceneViewerEntrySource.AiChat,
+    trajectorySource = preview.preview.toSceneTrajectorySource(
+        fallbackId = preview.resolvedSessionId ?: preview.attachment.trajectoryId
+    ),
+    sessionId = preview.resolvedSessionId ?: preview.attachment.trajectoryId
+)
+
+// ── v2 chat candidate → scene viewer bridge ──────────────────────
+//
+// A TrajectoryCandidate carries everything needed for a 3D preview:
+//   - download_url → trajectory JSON (we just downloaded it, pass InlineJson)
+//   - scene.spz_url → SPZ file (RemoteUrl, served by the launcher's HTTP proxy)
+//   - scene.anchor_pose → SE(3) alignment (anchorOverride, bypasses registry)
+// The sceneviewer module already handles the rest.
+
+private fun TrajectoryCandidate.toLegacyAttachment(): TrajectoryAttachment =
+    TrajectoryAttachment(
+        trajectoryId = id,
+        name = name,
+        durationSec = durationSec,
+        frameCount = frameCount,
+        downloadUrl = downloadUrl,
+        thumbnailUrl = thumbnailUrl
+    )
+
+private fun chatCandidateToSceneViewerRequest(
+    candidate: TrajectoryCandidate,
+    trajectoryJson: String
+): SceneViewerLaunchRequest {
+    val scene = candidate.scene
+    val sceneSource = scene?.spzUrl?.let { SceneAssetSource.RemoteUrl(it) }
+    val anchorOverride = scene?.anchorPose?.let { dto ->
+        CommonAnchorPose(
+            x = dto.x,
+            y = dto.y,
+            z = dto.z,
+            qx = dto.qx,
+            qy = dto.qy,
+            qz = dto.qz,
+            qw = dto.qw
+        )
+    }
+    val subtitle = buildString {
+        append("AI candidate · ")
+        append("${candidate.frameCount} frames")
+        candidate.simResult?.let { sim ->
+            append(if (sim.feasible) " · sim ok" else " · sim failed")
+        }
+    }
+    return SceneViewerLaunchRequest(
+        title = candidate.name.ifBlank { "AI trajectory candidate" },
+        subtitle = subtitle,
+        entrySource = SceneViewerEntrySource.AiChat,
+        trajectorySource = SceneTrajectorySource.InlineJson(trajectoryJson),
+        sceneSource = sceneSource,
+        sessionId = candidate.id,
+        anchorOverride = anchorOverride
+    )
+}
+
+/**
+ * Build a viewer request from a raw TUM body. Identical to
+ * [chatCandidateToSceneViewerRequest] except the trajectory is given to
+ * the viewer as `InlineTum` — its `parseTUMContent()` honours full 6-DOF
+ * camera poses (no planar-flatten / yaw-only loss). Use this when the
+ * cloud bridge serves `/trajectories/<id>.tum`.
+ */
+private fun chatCandidateToSceneViewerRequestTum(
+    candidate: TrajectoryCandidate,
+    tumText: String
+): SceneViewerLaunchRequest {
+    val scene = candidate.scene
+    val sceneSource = scene?.spzUrl?.let { raw ->
+        val trimmed = raw.trim()
+        when {
+            trimmed.isBlank() -> null
+            trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true) ->
+                SceneAssetSource.RemoteUrl(trimmed)
+            else -> SceneAssetSource.AppAsset(trimmed.removePrefix("./"))
+        }
+    }
+    val anchorOverride = scene?.anchorPose?.let { dto ->
+        CommonAnchorPose(
+            x = dto.x, y = dto.y, z = dto.z,
+            qx = dto.qx, qy = dto.qy, qz = dto.qz, qw = dto.qw
+        )
+    }
+    val subtitle = buildString {
+        append("AI candidate · ${candidate.frameCount} frames")
+        candidate.simResult?.let { sim ->
+            append(if (sim.feasible) " · sim ok" else " · sim failed")
+        }
+    }
+    return SceneViewerLaunchRequest(
+        title = candidate.name.ifBlank { "AI trajectory candidate" },
+        subtitle = subtitle,
+        entrySource = SceneViewerEntrySource.AiChat,
+        trajectorySource = SceneTrajectorySource.InlineTum(tumText),
+        sceneSource = sceneSource,
+        sessionId = candidate.id,
+        anchorOverride = anchorOverride
+    )
+}
+
+private fun localSessionPreviewToSceneViewerRequest(
+    preview: UserLocalSessionPreviewState
+): SceneViewerLaunchRequest = SceneViewerLaunchRequest(
+    title = preview.sessionName.ifBlank { "Local session scene preview" },
+    subtitle = "Local session · ${preview.frameCount} frames",
+    entrySource = SceneViewerEntrySource.LocalSession,
+    trajectorySource = preview.preview.toSceneTrajectorySource(preview.sessionId),
+    sessionId = preview.sessionId
+)
+
+private fun TrajectoryPreview.toSceneTrajectorySource(
+    fallbackId: String
+): SceneTrajectorySource {
+    val tumText = toTumText()
+    return if (tumText.isBlank()) {
+        SceneTrajectorySource.SessionReference(fallbackId)
+    } else {
+        SceneTrajectorySource.InlineTum(tumText)
+    }
+}
+
+private fun TrajectoryPreview.toTumText(): String {
+    if (samples.isEmpty()) return ""
+    return samples.mapIndexed { index, sample ->
+        val timestamp = sample.tSec.takeIf { it.isFinite() } ?: index.toDouble()
+        val halfYaw = sample.baseYaw / 2.0
+        String.format(
+            Locale.US,
+            "%.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f",
+            timestamp,
+            sample.baseX,
+            0.0,
+            sample.baseY,
+            0.0,
+            sin(halfYaw),
+            0.0,
+            cos(halfYaw)
+        )
+    }.joinToString(separator = "\n")
+}
+
+private fun String.toSceneAssetSourceOrNull(): SceneAssetSource? {
+    val normalized = trim()
+    return when {
+        normalized.startsWith("http://", ignoreCase = true) ||
+            normalized.startsWith("https://", ignoreCase = true) ->
+            SceneAssetSource.RemoteUrl(normalized)
+        normalized.startsWith("/") ->
+            SceneAssetSource.LocalFile(normalized)
+        else -> null
     }
 }
 
@@ -1484,7 +2169,8 @@ private fun UserStatusBar(
     detailHighlights: List<String>,
     onOpenMainControl: () -> Unit,
     onOpenRunner: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenSceneViewer: () -> Unit = {}
 ) {
     val statusLabel = statusMessage.ifBlank {
         when (connectionStatus) {
@@ -1532,6 +2218,7 @@ private fun UserStatusBar(
                                 route == UserMainRoute.TouchControl -> stringResource(R.string.route_touch_control)
                                 route == UserMainRoute.PostRecord -> stringResource(R.string.route_post_record)
                                 route == UserMainRoute.MediaGallery -> stringResource(R.string.route_media_gallery)
+                                route == UserMainRoute.SmartFollow -> stringResource(R.string.route_smart_follow)
                                 else -> stringResource(R.string.route_slam_maps)
                             },
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -1594,6 +2281,9 @@ private fun UserStatusBar(
                         Text(stringResource(R.string.route_motion_runner))
                     }
                 }
+                TextButton(onClick = onOpenSceneViewer) {
+                    Text("SceneViewer")
+                }
                 TextButton(onClick = onOpenSettings) {
                     Text(stringResource(R.string.nav_settings))
                 }
@@ -1614,6 +2304,7 @@ private fun MainControlRoute(
     onOpenRunner: () -> Unit,
     onOpenLibrary: () -> Unit,
     onOpenCreator: () -> Unit,
+    onOpenSmartFollow: () -> Unit,
     onOpenTouchControl: () -> Unit,
     onOpenSlamMaps: () -> Unit,
     onOpenMediaGallery: () -> Unit,
@@ -1671,6 +2362,7 @@ private fun MainControlRoute(
                 when (key) {
                     MainControlShortcutKey.MotionLibrary -> onOpenLibrary()
                     MainControlShortcutKey.CreateMotion -> onOpenCreator()
+                    MainControlShortcutKey.SmartFollow -> onOpenSmartFollow()
                 }
             },
             onTransportControlClick = { key ->
@@ -1709,12 +2401,26 @@ private fun MainControlRoute(
 private fun MotionCreatorRoute(
     chatViewModel: ChatViewModel,
     chatServerUrl: String,
+    showBitmapFrame: Boolean,
+    videoBitmap: android.graphics.Bitmap?,
+    onVideoSurfaceReady: (android.view.SurfaceHolder) -> Unit,
+    onVideoSurfaceDestroyed: () -> Unit,
+    captureThumbnail: () -> String?,
+    captureRobotState: (() -> com.recomo.common.chat.RobotStateSnapshot?)? = null,
     onBack: () -> Unit,
     onPreviewTrajectory: (TrajectoryAttachment) -> Unit,
     onExecuteTrajectory: (TrajectoryAttachment) -> Unit,
-    onCopyStylePresetSelected: (MotionDetailItem) -> Unit = {}
+    onPreviewCandidate: (TrajectoryCandidate) -> Unit,
+    onExecuteCandidate: (TrajectoryCandidate) -> Unit,
+    onCopyStylePresetSelected: (MotionDetailItem) -> Unit = {},
+    onOpenSceneViewer: (SceneViewerLaunchRequest) -> Unit = {},
+    voiceEngine: com.recomo.common.chat.voice.VoiceEngine = com.recomo.common.chat.voice.VoiceEngine.SYSTEM,
+    whisperRepository: com.recomo.common.chat.voice.WhisperModelRepository? = null,
+    voiceModelId: String = com.recomo.common.chat.voice.WhisperModelRepository.DEFAULT_MODEL_ID
 ) {
     var activeMode by rememberSaveable { mutableStateOf(MotionCreatorMode.Chat) }
+    val motionCreatorViewModel: com.recomo.user.control.UserMotionCreatorViewModel = hiltViewModel()
+    val eePositionViewModel: com.recomo.user.control.UserEEPositionViewModel = hiltViewModel()
     MotionCreatorScreen(
         state = MotionCreatorShellUiState(
             title = stringResource(R.string.route_motion_creator),
@@ -1757,22 +2463,50 @@ private fun MotionCreatorRoute(
         onModeSelected = { activeMode = it },
         onCopyStylePresetSelected = onCopyStylePresetSelected,
         chatContent = {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(onClick = onBack) {
-                    Text(stringResource(R.string.action_back))
-                }
-                Box(modifier = Modifier.fillMaxSize()) {
-                    ChatScreen(
-                        viewModel = chatViewModel,
-                        chatServerUrl = chatServerUrl,
-                        onPreviewTrajectory = onPreviewTrajectory,
-                        onExecuteTrajectory = onExecuteTrajectory
+            ChatScreen(
+                viewModel = chatViewModel,
+                chatServerUrl = chatServerUrl,
+                onPreviewTrajectory = onPreviewTrajectory,
+                onExecuteTrajectory = onExecuteTrajectory,
+                onPreviewCandidate = onPreviewCandidate,
+                onExecuteCandidate = onExecuteCandidate,
+                videoConfig = com.recomo.user.ui.screens.chat.ChatVideoConfig(
+                    showBitmapFrame = showBitmapFrame,
+                    videoBitmap = videoBitmap,
+                    onVideoSurfaceReady = onVideoSurfaceReady,
+                    onVideoSurfaceDestroyed = onVideoSurfaceDestroyed,
+                    captureSnapshot = captureThumbnail,
+                    captureRobotState = captureRobotState
+                ),
+                voiceEngine = voiceEngine,
+                whisperRepository = whisperRepository,
+                voiceModelId = voiceModelId
+            )
+        },
+        keypointContent = {
+            com.recomo.user.ui.screens.creator.KeypointCaptureWorkspace(
+                motionCreatorViewModel = motionCreatorViewModel,
+                eePositionViewModel = eePositionViewModel,
+                showBitmapFrame = showBitmapFrame,
+                videoBitmap = videoBitmap,
+                onVideoSurfaceReady = onVideoSurfaceReady,
+                onVideoSurfaceDestroyed = onVideoSurfaceDestroyed,
+                captureThumbnail = captureThumbnail,
+                modifier = Modifier.fillMaxSize()
+            )
+        },
+        phoneTeachContent = {
+            PhoneTeachNavHost(
+                onPreviewTrajectory = { tumFile ->
+                    onOpenSceneViewer(
+                        SceneViewerLaunchRequest(
+                            title = tumFile.parentFile?.name ?: "Phone Moco Trajectory",
+                            entrySource = SceneViewerEntrySource.LocalSession,
+                            trajectorySource = SceneTrajectorySource.LocalFile(tumFile.absolutePath)
+                        )
                     )
                 }
-            }
+            )
         }
     )
 }
@@ -2144,8 +2878,19 @@ private fun SettingsOverlay(
     onDismissSensors: () -> Unit = {},
     onPrepareScene: () -> Unit = {},
     onDismissScene: () -> Unit = {},
+    onUseWebRTCChange: (Boolean) -> Unit,
+    onVideoSourceChange: (VideoSource) -> Unit = {},
     onChatServerUrlChange: (String) -> Unit,
-    onSessionFolderPathChange: (String) -> Unit
+    onChatDirectEnabledChange: (Boolean) -> Unit = {},
+    onChatDirectBaseUrlChange: (String) -> Unit = {},
+    onChatDirectAuthTokenChange: (String) -> Unit = {},
+    onVoiceEngineChange: (com.recomo.common.chat.voice.VoiceEngine) -> Unit = {},
+    onVoiceModelChange: (com.recomo.common.chat.voice.WhisperModel) -> Unit = {},
+    onDownloadWhisperModel: () -> Unit = {},
+    onSessionFolderPathChange: (String) -> Unit,
+    onSceneViewerFolderPathChange: (String) -> Unit = {},
+    onSpeedTierChange: (Float, Float, Float) -> Unit = { _, _, _ -> },
+    onCountdownDurationChange: (Int) -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -2199,8 +2944,19 @@ private fun SettingsOverlay(
                 onPrepareSceneClick = onPrepareScene,
                 onDismissSceneClick = onDismissScene,
                 onSelectRobot = onSelectRobot,
+                onUseWebRTCChange = onUseWebRTCChange,
+                onVideoSourceChange = onVideoSourceChange,
                 onChatServerUrlChange = onChatServerUrlChange,
-                onSessionFolderPathChange = onSessionFolderPathChange
+                onChatDirectEnabledChange = onChatDirectEnabledChange,
+                onChatDirectBaseUrlChange = onChatDirectBaseUrlChange,
+                onChatDirectAuthTokenChange = onChatDirectAuthTokenChange,
+                onVoiceEngineChange = onVoiceEngineChange,
+                onVoiceModelChange = onVoiceModelChange,
+                onDownloadWhisperModel = onDownloadWhisperModel,
+                onSessionFolderPathChange = onSessionFolderPathChange,
+                onSceneViewerFolderPathChange = onSceneViewerFolderPathChange,
+                onSpeedTierChange = onSpeedTierChange,
+                onCountdownDurationChange = onCountdownDurationChange
             )
         }
     }
@@ -2218,3 +2974,9 @@ private fun toneForStatus(status: String): MainControlTone {
 
 private fun toneForRunnerStatus(ready: Boolean): MotionRunnerTone =
     if (ready) MotionRunnerTone.Success else MotionRunnerTone.Warning
+
+private fun Context.hasCameraPermission(): Boolean =
+    ContextCompat.checkSelfPermission(
+        this,
+        Manifest.permission.CAMERA
+    ) == PackageManager.PERMISSION_GRANTED

@@ -5,7 +5,12 @@ import android.os.Environment
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.recomo.remotecontrol.v3dr.data.*
+import com.recomo.common.settings.Bitrate
+import com.recomo.common.settings.NetworkProfile
+import com.recomo.common.settings.Resolution
+import com.recomo.remotecontrol.v3dr.data.AppSettings
+import com.recomo.remotecontrol.v3dr.data.SettingsRepository
+import com.recomo.remotecontrol.v3dr.data.VioBackendType
 import com.recomo.remotecontrol.v3dr.network.ServerHealthChecker
 import com.recomo.remotecontrol.v3dr.network.ServerHealthStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
