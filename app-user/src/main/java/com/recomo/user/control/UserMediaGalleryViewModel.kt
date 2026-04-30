@@ -21,7 +21,8 @@ enum class UserMediaGalleryFilter {
     All,
     Videos,
     Images,
-    Downloaded
+    Downloaded,
+    LocalRecordings
 }
 
 enum class UserMediaGallerySort {
@@ -60,6 +61,7 @@ class UserMediaGalleryViewModel @Inject constructor(
     private val filter = MutableStateFlow(UserMediaGalleryFilter.All)
     private val sort = MutableStateFlow(UserMediaGallerySort.Date)
     private val viewMode = MutableStateFlow(UserMediaGalleryViewMode.Grid)
+    private val _localRecordings = MutableStateFlow<List<UserMediaItem>>(emptyList())
 
     private val queryState = combine(searchQuery, filter, sort, viewMode) { query, activeFilter, activeSort, activeViewMode ->
         GalleryQueryState(query, activeFilter, activeSort, activeViewMode)
@@ -69,16 +71,22 @@ class UserMediaGalleryViewModel @Inject constructor(
         mediaRepository.mediaItems,
         mediaRepository.isLoading,
         mediaRepository.error,
-        mediaRepository.downloadProgress,
+        combine(mediaRepository.downloadProgress, _localRecordings) { dp, lr -> dp to lr },
         queryState
-    ) { items, isLoading, error, downloadProgress, queryState ->
-        val filtered = items
+    ) { items, isLoading, error, (downloadProgress, localRecordings), queryState ->
+        // Merge remote + local items for All view, or show only local for LocalRecordings filter
+        val source = when (queryState.filter) {
+            UserMediaGalleryFilter.LocalRecordings -> localRecordings
+            else -> items + localRecordings
+        }
+        val filtered = source
             .filter { item ->
                 when (queryState.filter) {
                     UserMediaGalleryFilter.All -> true
                     UserMediaGalleryFilter.Videos -> item.type == UserMediaType.VIDEO
                     UserMediaGalleryFilter.Images -> item.type == UserMediaType.IMAGE
                     UserMediaGalleryFilter.Downloaded -> mediaRepository.isDownloaded(item)
+                    UserMediaGalleryFilter.LocalRecordings -> true // already filtered above
                 }
             }
             .filter { item ->
@@ -136,6 +144,9 @@ class UserMediaGalleryViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch {
+            // Load local recordings (always succeeds)
+            _localRecordings.value = mediaRepository.getLocalRecordings()
+            // Load remote Orin media (may fail if disconnected)
             mediaRepository.refresh().onFailure {
                 if (mediaRepository.mediaItems.value.isEmpty()) {
                     mediaRepository.fetchMediaList()

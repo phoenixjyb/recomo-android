@@ -1,5 +1,6 @@
 package com.recomo.user.data.video
 
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -7,6 +8,9 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import com.recomo.user.data.media.UserMediaManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -235,6 +239,9 @@ class UserVideoRecorder @Inject constructor(
                 val fileSize = file?.length() ?: 0L
                 resetStateLocked()
                 if (file != null && file.exists() && fileSize > 0L) {
+                    // Copy to shared storage (Movies/Recomo/) so it survives uninstall
+                    // and appears in system gallery/Files app
+                    copyToSharedStorage(file)
                     Pair(file.absolutePath, fileSize)
                 } else {
                     null
@@ -244,6 +251,42 @@ class UserVideoRecorder @Inject constructor(
                 cleanupLocked()
                 null
             }
+        }
+    }
+
+    /**
+     * Copy recorded file to shared Movies/Recomo/ via MediaStore.
+     * The original app-private file is kept as well.
+     */
+    private fun copyToSharedStorage(file: File) {
+        try {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Recomo")
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                }
+            }
+            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out ->
+                    file.inputStream().use { input -> input.copyTo(out) }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    values.clear()
+                    values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                    resolver.update(uri, values, null, null)
+                }
+                Log.i(TAG, "Copied recording to shared storage: Movies/Recomo/${file.name}")
+            } else {
+                Log.w(TAG, "Failed to insert into MediaStore")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy to shared storage", e)
+            // Non-fatal — app-private copy still exists
         }
     }
 

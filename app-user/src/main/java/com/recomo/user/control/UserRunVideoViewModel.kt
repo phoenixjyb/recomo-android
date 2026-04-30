@@ -254,6 +254,8 @@ class UserRunVideoViewModel @Inject constructor(
                 (inputs.connectionState as? ConnectionState.Error)?.message
             },
             resolutionLabel = if (isHdmiActive) "1920×1080" else inputs.telemetry?.resolution?.let { "${it.width}×${it.height}" } ?: "--",
+            videoWidth = if (isHdmiActive) 1920 else inputs.telemetry?.resolution?.width?.takeIf { it > 0 } ?: 0,
+            videoHeight = if (isHdmiActive) 1080 else inputs.telemetry?.resolution?.height?.takeIf { it > 0 } ?: 0,
             codecLabel = if (isHdmiActive) "UVC" else inputs.telemetry?.codec?.ifBlank { null } ?: when (inputs.frameFormat) {
                 VideoFrameFormat.JPEG -> "JPEG"
                 VideoFrameFormat.H26X -> "H.26x"
@@ -720,6 +722,8 @@ data class UserRunVideoUiState(
     val detailState: UserRunVideoDetailState = UserRunVideoDetailState.Idle,
     val errorMessage: String? = null,
     val resolutionLabel: String = "--",
+    val videoWidth: Int = 0,
+    val videoHeight: Int = 0,
     val codecLabel: String? = null,
     val fpsLabel: String? = null,
     val showBitmapFrame: Boolean = false,

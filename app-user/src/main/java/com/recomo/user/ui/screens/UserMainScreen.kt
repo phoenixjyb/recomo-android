@@ -1586,8 +1586,12 @@ fun UserMainScreen() {
                                 onBack = { shellViewModel.navigateTo(UserMainRoute.MainControl) },
                                 showBitmapFrame = runVideoState.showBitmapFrame,
                                 videoBitmap = runVideoBitmap,
+                                videoWidth = runVideoState.videoWidth,
+                                videoHeight = runVideoState.videoHeight,
+                                isTabletRecording = runVideoState.isRecording,
                                 onVideoSurfaceReady = runVideoViewModel::initializeSurface,
-                                onVideoSurfaceDestroyed = runVideoViewModel::releaseSurface
+                                onVideoSurfaceDestroyed = runVideoViewModel::releaseSurface,
+                                onToggleTabletRecording = runVideoViewModel::toggleRecording
                             )
                         }
 

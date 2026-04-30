@@ -1,7 +1,9 @@
 package com.recomo.user.ui.screens.smartfollow
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -17,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.outlined.FiberManualRecord
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,8 +53,12 @@ fun SmartFollowRoute(
     onBack: () -> Unit,
     showBitmapFrame: Boolean = false,
     videoBitmap: Bitmap? = null,
+    videoWidth: Int = 0,
+    videoHeight: Int = 0,
+    isTabletRecording: Boolean = false,
     onVideoSurfaceReady: (android.view.SurfaceHolder) -> Unit = {},
-    onVideoSurfaceDestroyed: () -> Unit = {}
+    onVideoSurfaceDestroyed: () -> Unit = {},
+    onToggleTabletRecording: () -> Unit = {}
 ) {
     val viewModel: SmartFollowViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
@@ -65,6 +72,9 @@ fun SmartFollowRoute(
         uiState = uiState,
         showBitmapFrame = showBitmapFrame,
         videoBitmap = videoBitmap,
+        videoWidth = videoWidth,
+        videoHeight = videoHeight,
+        isTabletRecording = isTabletRecording,
         onVideoSurfaceReady = onVideoSurfaceReady,
         onVideoSurfaceDestroyed = onVideoSurfaceDestroyed,
         onRoiSelected = viewModel::onRoiSelected,
@@ -73,6 +83,10 @@ fun SmartFollowRoute(
         onPauseFollow = viewModel::pauseFollow,
         onResumeFollow = viewModel::resumeFollow,
         onReselectTarget = viewModel::reselectTarget,
+        onSelectPreset = viewModel::selectCompositionPreset,
+        onMaxSpeedChange = viewModel::updateMaxSpeed,
+        onFollowDistanceChange = viewModel::updateFollowDistance,
+        onToggleTabletRecording = onToggleTabletRecording,
         onBack = {
             viewModel.onExitScreen()
             onBack()
@@ -85,6 +99,9 @@ fun SmartFollowScreen(
     uiState: SmartFollowUiState,
     showBitmapFrame: Boolean,
     videoBitmap: Bitmap?,
+    videoWidth: Int = 0,
+    videoHeight: Int = 0,
+    isTabletRecording: Boolean = false,
     onVideoSurfaceReady: (android.view.SurfaceHolder) -> Unit,
     onVideoSurfaceDestroyed: () -> Unit,
     onRoiSelected: (com.recomo.common.model.TargetRoi) -> Unit,
@@ -93,6 +110,10 @@ fun SmartFollowScreen(
     onPauseFollow: () -> Unit,
     onResumeFollow: () -> Unit,
     onReselectTarget: () -> Unit,
+    onSelectPreset: (CompositionPreset) -> Unit,
+    onMaxSpeedChange: (Double) -> Unit,
+    onFollowDistanceChange: (Double) -> Unit,
+    onToggleTabletRecording: () -> Unit = {},
     onBack: () -> Unit
 ) {
     Column(
@@ -103,6 +124,8 @@ fun SmartFollowScreen(
         // ── Top bar ──
         SmartFollowTopBar(
             state = uiState.state,
+            isTabletRecording = isTabletRecording,
+            onToggleTabletRecording = onToggleTabletRecording,
             onBack = onBack
         )
 
@@ -112,28 +135,43 @@ fun SmartFollowScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            // Compute video content area for correct bbox coordinate conversion.
-            // All our cameras are 16:9 (1920x1080 or 1280x720).
-            val videoAspect = 16f / 9f
             val viewWidth = constraints.maxWidth.toFloat()
             val viewHeight = constraints.maxHeight.toFloat()
-            val viewAspect = if (viewHeight > 0) viewWidth / viewHeight else videoAspect
 
-            val videoContentArea = if (videoAspect > viewAspect) {
-                // Video wider than view — letterbox top/bottom
-                val contentHeight = viewWidth / videoAspect
-                val offsetY = (viewHeight - contentHeight) / 2f
-                Rect(0f, offsetY, viewWidth, offsetY + contentHeight)
+            // Determine actual video aspect ratio from available sources
+            val videoAspect = when {
+                showBitmapFrame && videoBitmap != null ->
+                    videoBitmap.width.toFloat() / videoBitmap.height.toFloat().coerceAtLeast(1f)
+                videoWidth > 0 && videoHeight > 0 ->
+                    videoWidth.toFloat() / videoHeight.toFloat()
+                else -> 0f  // unknown — will fill entire view
+            }
+
+            // Content area: where the video actually appears (after aspect-ratio fit).
+            // Both SurfaceView (with aspectRatio modifier) and Bitmap (ContentScale.Fit)
+            // center the video within the view with letterbox/pillarbox.
+            val videoContentArea = if (videoAspect > 0f) {
+                val viewAspect = if (viewHeight > 0) viewWidth / viewHeight else videoAspect
+                if (videoAspect > viewAspect) {
+                    // Video wider — letterbox top/bottom
+                    val contentHeight = viewWidth / videoAspect
+                    val offsetY = (viewHeight - contentHeight) / 2f
+                    Rect(0f, offsetY, viewWidth, offsetY + contentHeight)
+                } else {
+                    // Video taller — pillarbox left/right
+                    val contentWidth = viewHeight * videoAspect
+                    val offsetX = (viewWidth - contentWidth) / 2f
+                    Rect(offsetX, 0f, offsetX + contentWidth, viewHeight)
+                }
             } else {
-                // Video taller than view — pillarbox left/right
-                val contentWidth = viewHeight * videoAspect
-                val offsetX = (viewWidth - contentWidth) / 2f
-                Rect(offsetX, 0f, offsetX + contentWidth, viewHeight)
+                // No resolution info yet — fill entire view (best effort)
+                Rect(0f, 0f, viewWidth, viewHeight)
             }
 
             VideoPreviewContent(
                 showBitmapFrame = showBitmapFrame,
                 videoBitmap = videoBitmap,
+                videoAspectRatio = videoAspect,
                 contentDescription = "Smart Follow camera feed",
                 onVideoSurfaceReady = onVideoSurfaceReady,
                 onVideoSurfaceDestroyed = onVideoSurfaceDestroyed,
@@ -173,6 +211,21 @@ fun SmartFollowScreen(
         // ── Status strip ──
         SmartFollowStatusStrip(state = uiState)
 
+        // ── Composition preset chips ──
+        CompositionPresetRow(
+            selected = uiState.selectedPreset,
+            compositionQuality = uiState.compositionQuality,
+            onSelect = onSelectPreset
+        )
+
+        // ── Follow parameters ──
+        SmartFollowParameterPanel(
+            maxSpeed = uiState.maxSpeed,
+            followDistance = uiState.followDistance,
+            onMaxSpeedChange = onMaxSpeedChange,
+            onFollowDistanceChange = onFollowDistanceChange
+        )
+
         // ── Control buttons ──
         SmartFollowControls(
             state = uiState.state,
@@ -189,6 +242,8 @@ fun SmartFollowScreen(
 @Composable
 private fun SmartFollowTopBar(
     state: SmartFollowState,
+    isTabletRecording: Boolean,
+    onToggleTabletRecording: () -> Unit,
     onBack: () -> Unit
 ) {
     Surface(
@@ -217,6 +272,18 @@ private fun SmartFollowTopBar(
             )
 
             Spacer(Modifier.weight(1f))
+
+            // Tablet recording toggle
+            IconButton(onClick = onToggleTabletRecording) {
+                Icon(
+                    Icons.Outlined.FiberManualRecord,
+                    contentDescription = "Toggle tablet recording",
+                    tint = if (isTabletRecording) StudioChrome.danger else StudioChrome.textMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(Modifier.width(4.dp))
 
             // State badge
             val (badgeColor, badgeLabel) = stateVisual(state)
@@ -322,14 +389,89 @@ private fun SmartFollowStatusStrip(state: SmartFollowUiState) {
                 color = locColor
             )
 
-            if (state.pncFsmState > 0) {
+            if (state.followActive || state.followPncState != FollowPncState.Idle) {
                 Spacer(Modifier.width(10.dp))
+                val pncColor = when (state.followPncState) {
+                    FollowPncState.Running -> StudioChrome.success
+                    FollowPncState.LostTarget -> StudioChrome.danger
+                    FollowPncState.Error -> StudioChrome.danger
+                    FollowPncState.Arrived -> StudioChrome.accentPurple
+                    FollowPncState.Paused -> StudioChrome.warning
+                    else -> StudioChrome.textMuted
+                }
                 Text(
-                    text = "FSM: ${state.pncFsmState}",
+                    text = "PnC: ${state.followPncState.labelZh}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = StudioChrome.textMuted
+                    color = pncColor
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CompositionPresetRow(
+    selected: CompositionPreset,
+    compositionQuality: CompositionQualityState?,
+    onSelect: (CompositionPreset) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = StudioChrome.background
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CompositionPreset.entries.forEach { preset ->
+                    val isSelected = preset == selected
+                    Surface(
+                        onClick = { onSelect(preset) },
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (isSelected) StudioChrome.accentBlue.copy(alpha = 0.2f)
+                                else Color.Transparent,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) StudioChrome.accentBlue else StudioChrome.panelBorder
+                        )
+                    ) {
+                        Text(
+                            text = preset.labelZh,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isSelected) StudioChrome.accentBlue else StudioChrome.textMuted,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                // Composition quality gauge
+                compositionQuality?.let { q ->
+                    val qualityColor = when {
+                        q.qualityPct >= 80 -> StudioChrome.success
+                        q.qualityPct >= 50 -> StudioChrome.warning
+                        else -> StudioChrome.danger
+                    }
+                    Text(
+                        text = "${q.qualityPct}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = qualityColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            // Preset description
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = selected.descZh,
+                style = MaterialTheme.typography.labelSmall,
+                color = StudioChrome.textMuted.copy(alpha = 0.6f)
+            )
         }
     }
 }

@@ -999,6 +999,7 @@ private fun filterCount(
     UserMediaGalleryFilter.Videos -> state.allItems.count { it.type == UserMediaType.VIDEO }
     UserMediaGalleryFilter.Images -> state.allItems.count { it.type == UserMediaType.IMAGE }
     UserMediaGalleryFilter.Downloaded -> state.allItems.count { state.downloadedIds.contains(it.id) }
+    UserMediaGalleryFilter.LocalRecordings -> state.allItems.count { it.id.startsWith("local_") }
 }
 
 private fun displayMediaName(item: UserMediaItem): String =

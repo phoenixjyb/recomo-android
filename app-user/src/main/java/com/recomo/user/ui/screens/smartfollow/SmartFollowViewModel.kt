@@ -32,24 +32,30 @@ class SmartFollowViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<SmartFollowState>(SmartFollowState.Idle)
+    private val _selectedPreset = MutableStateFlow(CompositionPreset.CenteredFullBody)
+    private val _maxSpeed = MutableStateFlow(0.8)
+    private val _followDistance = MutableStateFlow(2.0)
 
     val uiState: StateFlow<SmartFollowUiState> = combine(
         _state,
         gatewayClient.subjectTracking,
         gatewayClient.connectionState,
-        gatewayClient.robotState
-    ) { state, tracking, connection, robotState ->
+        combine(gatewayClient.robotState, _selectedPreset, _maxSpeed, _followDistance) { rs, preset, speed, dist ->
+            object { val rs = rs; val preset = preset; val speed = speed; val dist = dist }
+        }
+    ) { state, tracking, connection, params ->
         val isConnected = connection is ConnectionState.Connected
-        val followActive = robotState?.get("run")
-            ?.jsonObject?.get("follow_active")
-            ?.jsonPrimitive?.booleanOrNull ?: false
-        val pncFsmState = robotState?.get("run")
-            ?.jsonObject?.get("pnc_fsm_state")
-            ?.jsonPrimitive?.intOrNull ?: 0
-        val robotPoseOk = (robotState?.get("topic_health")?.jsonObject?.get("robot_pose_ok")
-            ?: robotState?.get("robot_pose_ok"))?.jsonPrimitive?.booleanOrNull ?: false
-        val currentMap = robotState?.get("maps")?.jsonObject
+        val run = params.rs?.get("run")?.jsonObject
+        val followActive = run?.get("follow_active")?.jsonPrimitive?.booleanOrNull ?: false
+        val pncFsmState = run?.get("pnc_fsm_state")?.jsonPrimitive?.intOrNull ?: 0
+        val followPncStateRaw = run?.get("follow_pnc_state")?.jsonPrimitive?.intOrNull ?: 0
+        val compositionStatusRaw = run?.get("composition_status")?.jsonPrimitive?.contentOrNull
+        val robotPoseOk = (params.rs?.get("topic_health")?.jsonObject?.get("robot_pose_ok")
+            ?: params.rs?.get("robot_pose_ok"))?.jsonPrimitive?.booleanOrNull ?: false
+        val currentMap = params.rs?.get("maps")?.jsonObject
             ?.get("current_map")?.jsonPrimitive?.contentOrNull
+
+        val compQuality = parseCompositionQuality(compositionStatusRaw)
 
         SmartFollowUiState(
             state = state,
@@ -57,8 +63,13 @@ class SmartFollowViewModel @Inject constructor(
             isConnected = isConnected,
             followActive = followActive,
             pncFsmState = pncFsmState,
+            followPncState = FollowPncState.fromValue(followPncStateRaw),
             robotPoseOk = robotPoseOk,
-            currentMap = currentMap
+            currentMap = currentMap,
+            selectedPreset = params.preset,
+            compositionQuality = compQuality,
+            maxSpeed = params.speed,
+            followDistance = params.dist
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SmartFollowUiState())
 
@@ -119,7 +130,15 @@ class SmartFollowViewModel @Inject constructor(
         _state.value = SmartFollowState.Pending
     }
 
-    fun startFollow(maxSpeed: Double = 0.8, followDistance: Double = 2.0) {
+    fun updateMaxSpeed(speed: Double) {
+        _maxSpeed.value = speed.coerceIn(0.1, 1.5)
+    }
+
+    fun updateFollowDistance(distance: Double) {
+        _followDistance.value = distance.coerceIn(0.5, 5.0)
+    }
+
+    fun startFollow(maxSpeed: Double = _maxSpeed.value, followDistance: Double = _followDistance.value) {
         val current = _state.value
         if (current !is SmartFollowState.Tracking) {
             Log.w(TAG, "Cannot start follow from state: $current")
@@ -159,6 +178,19 @@ class SmartFollowViewModel @Inject constructor(
             sendFollowCmd("stop")
         }
         _state.value = SmartFollowState.Idle
+    }
+
+    fun selectCompositionPreset(preset: CompositionPreset) {
+        Log.d(TAG, "Composition preset: ${preset.wireValue}")
+        _selectedPreset.value = preset
+        viewModelScope.launch {
+            gatewayClient.sendControl(
+                buildJsonObject {
+                    put("type", "CompositionPreset")
+                    put("preset", preset.wireValue)
+                }
+            )
+        }
     }
 
     // ── Internal state machine ──
@@ -244,5 +276,22 @@ class SmartFollowViewModel @Inject constructor(
                 }
             )
         }
+    }
+
+    // ── Helpers ──
+
+    private fun parseCompositionQuality(raw: String?): CompositionQualityState? {
+        if (raw.isNullOrBlank()) return null
+        return try {
+            val j = kotlinx.serialization.json.Json.parseToJsonElement(raw).jsonObject
+            CompositionQualityState(
+                qualityPct = j["quality_pct"]?.jsonPrimitive?.intOrNull ?: 0,
+                errorU = j["error_u_px"]?.jsonPrimitive?.intOrNull ?: 0,
+                errorV = j["error_v_px"]?.jsonPrimitive?.intOrNull ?: 0,
+                errorS = j["error_s_px"]?.jsonPrimitive?.intOrNull ?: 0,
+                presetName = j["preset"]?.jsonPrimitive?.contentOrNull ?: "",
+                trackingState = j["tracking_state"]?.jsonPrimitive?.contentOrNull ?: ""
+            )
+        } catch (_: Exception) { null }
     }
 }

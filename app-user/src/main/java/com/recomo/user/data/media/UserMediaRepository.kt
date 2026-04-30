@@ -96,6 +96,28 @@ class UserMediaRepository @Inject constructor(
 
     suspend fun refresh(): Result<Unit> = fetchMediaList(filter = lastFilter)
 
+    /**
+     * Scan local Recordings/ directory and return as UserMediaItems.
+     * These are tablet-side recordings — not from Orin.
+     */
+    suspend fun getLocalRecordings(): List<UserMediaItem> = withContext(Dispatchers.IO) {
+        val dir = mediaManager.directoryFor(UserMediaManager.Category.Recordings)
+        if (!dir.exists()) return@withContext emptyList()
+        dir.listFiles()
+            ?.filter { it.isFile && it.extension.lowercase() in listOf("mp4", "mkv", "mov") }
+            ?.sortedByDescending { it.lastModified() }
+            ?.map { file ->
+                UserMediaItem(
+                    id = "local_${file.name}",
+                    filename = file.name,
+                    type = UserMediaType.VIDEO,
+                    timestamp = file.lastModified(),
+                    size = file.length(),
+                    downloadUrl = "file://${file.absolutePath}"
+                )
+            } ?: emptyList()
+    }
+
     private fun destinationFor(mediaItem: UserMediaItem): File =
         File(downloadsDirectory(), mediaItem.filename)
 }
